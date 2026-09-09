@@ -11,6 +11,10 @@ class ProxyValidationTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("domain_name", form.errors)
 
+    def test_fully_qualified_domain_is_accepted(self):
+        form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
+        self.assertTrue(form.is_valid(), form.errors)
+
     def test_https_requires_certificate(self):
         form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "https", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
         self.assertFalse(form.is_valid())

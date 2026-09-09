@@ -3,7 +3,7 @@ import re
 from django import forms
 from .models import CertificateBundle, ProxyConfig
 
-DOMAIN_RE = re.compile(r"^(?=.{1,253}\\Z)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z]{2,63}\\Z")
+DOMAIN_RE = re.compile(r"^(?=.{1,253}\Z)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\Z")
 
 
 class ProxyConfigForm(forms.ModelForm):
