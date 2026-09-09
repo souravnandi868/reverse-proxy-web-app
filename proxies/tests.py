@@ -1,8 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from unittest.mock import patch
+
 from .forms import ProxyConfigForm
 from .models import ProxyConfig
-from .services import render_proxy_config
+from .services import OperationResult, render_proxy_config
 
 
 class ProxyValidationTests(TestCase):
@@ -40,6 +42,21 @@ class ProxyValidationTests(TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Proxy configurations")
+
+    @patch("proxies.views.apply_proxy")
+    def test_disabling_proxy_applies_disabled_state(self, apply_proxy):
+        user = get_user_model().objects.create_user("operator", password="correct horse battery staple", is_staff=True)
+        proxy = ProxyConfig.objects.create(domain_name="app.example.com", backend_private_ip="10.0.0.4", backend_port=8080, incoming_protocol="http", backend_protocol="http", created_by=user, updated_by=user)
+        apply_proxy.return_value = OperationResult(True, "NGINX configuration validated and reloaded.")
+        self.client.force_login(user)
+
+        response = self.client.post(f"/proxies/{proxy.pk}/toggle/")
+
+        self.assertRedirects(response, "/")
+        proxy.refresh_from_db()
+        self.assertFalse(proxy.enabled)
+        apply_proxy.assert_called_once()
+        self.assertFalse(apply_proxy.call_args.args[0].enabled)
 
     def test_staff_can_log_out_with_post(self):
         user = get_user_model().objects.create_user("logout-user", password="correct horse battery staple", is_staff=True)

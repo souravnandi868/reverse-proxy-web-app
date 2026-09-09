@@ -87,14 +87,23 @@ def proxy_delete(request, pk):
 def proxy_toggle(request, pk):
     proxy = get_object_or_404(ProxyConfig, pk=pk)
     if request.method == "POST":
+        previous_enabled = proxy.enabled
         with transaction.atomic():
             save_backup(proxy, request.user, "before status change")
             proxy.enabled = not proxy.enabled
             proxy.updated_by = request.user
             proxy.save(update_fields=["enabled", "updated_by", "updated_at"])
         action = "enable" if proxy.enabled else "disable"
+        result = apply_proxy(proxy)
+        if not result.ok:
+            proxy.enabled = previous_enabled
+            proxy.save(update_fields=["enabled", "updated_at"])
+            messages.error(request, f"{proxy.domain_name}: {result.message}")
+            return redirect("dashboard")
+        proxy.last_applied_at = timezone.now()
+        proxy.save(update_fields=["last_applied_at"])
         log_action(request, action, proxy.domain_name)
-        messages.success(request, f"{proxy.domain_name} {action}d. Apply changes to update NGINX.")
+        messages.success(request, f"{proxy.domain_name} {action}d and NGINX was reloaded.")
     return redirect("dashboard")
 
 
