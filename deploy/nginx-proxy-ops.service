@@ -1,0 +1,18 @@
+[Unit]
+Description=Restricted NGINX Proxy Admin operations service
+After=nginx.service
+
+[Service]
+Type=simple
+User=root
+Group=nginx
+ExecStart=/usr/bin/python3 /opt/proxy-admin/ops/nginx-ops.py
+Restart=on-failure
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/etc/nginx/conf.d/proxy-admin /run/nginx-proxy-admin
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Proxy Control{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">N</span><span>Proxy Control</span></a>
+    <nav>
+      <a href="{% url 'dashboard' %}" class="nav-link">Overview</a>
+      <a href="{% url 'certificates' %}" class="nav-link">TLS certificates</a>
+      <a href="{% url 'audit' %}" class="nav-link">Audit trail</a>
+      <a href="/admin/" class="nav-link">Django admin</a>
+    </nav>
+    <div class="sidebar-foot"><span class="status-dot"></span> Operations service protected</div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div><span class="eyebrow">ORACLE LINUX 9.5</span><h1>{% block heading %}Reverse proxy control{% endblock %}</h1></div><div class="user-menu"><span>{{ request.user.get_username }}</span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Sign out</button></form></div></header>
+    {% if messages %}<div class="messages">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

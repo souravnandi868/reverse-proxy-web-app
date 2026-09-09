@@ -1,0 +1,3 @@
+# The Django service never receives sudo access. The root-owned systemd helper owns NGINX operations.
+# Ensure the web service account can connect to the socket via its group only:
+# nginxproxy ALL=(root) NOPASSWD: /usr/bin/systemctl is-active nginx
