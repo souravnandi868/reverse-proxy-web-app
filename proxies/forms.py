@@ -1,9 +1,38 @@
 import ipaddress
 import re
+import socket
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 from django import forms
 from .models import CertificateBundle, ProxyConfig
 
 DOMAIN_RE = re.compile(r"^(?=.{1,253}\Z)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\Z")
+
+
+def resolve_public_ip(domain):
+    """Return the first globally routable address published for a domain."""
+    try:
+        addresses = socket.getaddrinfo(domain, None, type=socket.SOCK_STREAM)
+    except OSError:
+        return None
+
+    for address in addresses:
+        candidate = address[4][0]
+        try:
+            if ipaddress.ip_address(candidate).is_global:
+                return candidate
+        except ValueError:
+            continue
+    return None
+
+
+def certificate_valid_until(uploaded):
+    uploaded.seek(0)
+    certificate = x509.load_pem_x509_certificate(uploaded.read(), default_backend())
+    uploaded.seek(0)
+    if hasattr(certificate, "not_valid_after_utc"):
+        return certificate.not_valid_after_utc.date()
+    return certificate.not_valid_after.date()
 
 
 class ProxyConfigForm(forms.ModelForm):
@@ -35,6 +64,8 @@ class ProxyConfigForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        if cleaned.get("domain_name") and not cleaned.get("public_ip"):
+            cleaned["public_ip"] = resolve_public_ip(cleaned["domain_name"])
         if cleaned.get("incoming_protocol") == "https" and not cleaned.get("certificate_bundle"):
             self.add_error("certificate_bundle", "HTTPS proxies require an active certificate bundle.")
         return cleaned
@@ -51,6 +82,11 @@ class CertificateBundleForm(forms.ModelForm):
             "valid_until": forms.DateInput(attrs={"type": "date"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["valid_until"].required = False
+        self.fields["valid_until"].help_text = "Read automatically from the uploaded certificate."
+
     def _validate_pem(self, uploaded, marker):
         if uploaded.size > 1024 * 1024:
             raise forms.ValidationError("Certificate files must be 1 MB or smaller.")
@@ -63,7 +99,17 @@ class CertificateBundleForm(forms.ModelForm):
     def clean_certificate(self):
         value = self.cleaned_data["certificate"]
         self._validate_pem(value, b"-----BEGIN CERTIFICATE-----")
+        try:
+            self._certificate_valid_until = certificate_valid_until(value)
+        except ValueError as exc:
+            raise forms.ValidationError("The certificate could not be parsed as a valid PEM certificate.") from exc
         return value
+
+    def clean(self):
+        cleaned = super().clean()
+        if hasattr(self, "_certificate_valid_until"):
+            cleaned["valid_until"] = self._certificate_valid_until
+        return cleaned
 
     def clean_private_key(self):
         value = self.cleaned_data["private_key"]

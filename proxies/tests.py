@@ -1,8 +1,10 @@
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from datetime import date
 from unittest.mock import patch
 
-from .forms import ProxyConfigForm
+from .forms import CertificateBundleForm, ProxyConfigForm
 from .models import ProxyConfig
 from .services import OperationResult, render_proxy_config
 
@@ -17,10 +19,34 @@ class ProxyValidationTests(TestCase):
         form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
         self.assertTrue(form.is_valid(), form.errors)
 
+    @patch("proxies.forms.resolve_public_ip", return_value="203.0.113.10")
+    def test_public_ip_is_resolved_when_blank(self, resolve_public_ip):
+        form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["public_ip"], "203.0.113.10")
+        resolve_public_ip.assert_called_once_with("app.example.com")
+
+    @patch("proxies.forms.resolve_public_ip", return_value="203.0.113.10")
+    def test_manual_public_ip_is_preserved(self, resolve_public_ip):
+        form = ProxyConfigForm(data={"domain_name": "app.example.com", "public_ip": "198.51.100.20", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["public_ip"], "198.51.100.20")
+        resolve_public_ip.assert_not_called()
+
     def test_https_requires_certificate(self):
         form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "https", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
         self.assertFalse(form.is_valid())
         self.assertIn("certificate_bundle", form.errors)
+
+    @patch("proxies.forms.certificate_valid_until", return_value=date(2030, 12, 31))
+    def test_certificate_valid_until_is_extracted_automatically(self, certificate_valid_until):
+        form = CertificateBundleForm(data={"name": "wildcard-example-com"}, files={
+            "certificate": SimpleUploadedFile("certificate.pem", b"-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"),
+            "private_key": SimpleUploadedFile("private.key", b"-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----"),
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["valid_until"], date(2030, 12, 31))
+        certificate_valid_until.assert_called_once()
 
     def test_rendered_config_uses_fixed_directive_shape(self):
         user = get_user_model().objects.create_user("operator", password="correct horse battery staple", is_staff=True)
