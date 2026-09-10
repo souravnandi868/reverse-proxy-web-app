@@ -28,7 +28,12 @@ def log_action(request, action, target, detail=None):
 @staff_required
 def dashboard(request):
     proxies = ProxyConfig.objects.select_related("certificate_bundle").all()
-    return render(request, "proxies/dashboard.html", {"proxies": proxies, "active_count": proxies.filter(enabled=True).count(), "audit_entries": AuditLog.objects.select_related("actor")[:6]})
+    return render(request, "proxies/dashboard.html", {
+        "proxies": proxies,
+        "active_count": proxies.filter(enabled=True).count(),
+        "certificate_count": CertificateBundle.objects.filter(is_active=True).count(),
+        "audit_entries": AuditLog.objects.select_related("actor")[:6],
+    })
 
 
 @staff_required
