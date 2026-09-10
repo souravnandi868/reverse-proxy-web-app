@@ -9,9 +9,10 @@ DOMAIN_RE = re.compile(r"^(?=.{1,253}\Z)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za
 class ProxyConfigForm(forms.ModelForm):
     class Meta:
         model = ProxyConfig
-        fields = ["domain_name", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "enabled"]
+        fields = ["domain_name", "public_ip", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "enabled"]
         widgets = {
             "domain_name": forms.TextInput(attrs={"placeholder": "app.example.com"}),
+            "public_ip": forms.TextInput(attrs={"placeholder": "203.0.113.10"}),
             "backend_private_ip": forms.TextInput(attrs={"placeholder": "10.20.30.40"}),
             "backend_port": forms.NumberInput(attrs={"placeholder": "8080", "min": "1", "max": "65535"}),
             "incoming_protocol": forms.Select(attrs={"placeholder": "HTTPS"}),
@@ -42,11 +43,12 @@ class ProxyConfigForm(forms.ModelForm):
 class CertificateBundleForm(forms.ModelForm):
     class Meta:
         model = CertificateBundle
-        fields = ["name", "certificate", "private_key"]
+        fields = ["name", "certificate", "private_key", "valid_until"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "wildcard-example-com"}),
             "certificate": forms.ClearableFileInput(attrs={"accept": ".pem,.crt,.cer"}),
             "private_key": forms.ClearableFileInput(attrs={"accept": ".pem,.key"}),
+            "valid_until": forms.DateInput(attrs={"type": "date"}),
         }
 
     def _validate_pem(self, uploaded, marker):

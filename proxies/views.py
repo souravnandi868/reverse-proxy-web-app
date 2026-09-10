@@ -5,6 +5,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
+from datetime import timedelta
 from django.utils import timezone
 from .forms import CertificateBundleForm, ProxyConfigForm
 from .models import AuditLog, CertificateBundle, ProxyConfig
@@ -28,10 +29,13 @@ def log_action(request, action, target, detail=None):
 @staff_required
 def dashboard(request):
     proxies = ProxyConfig.objects.select_related("certificate_bundle").all()
+    expiry_cutoff = timezone.localdate() + timedelta(days=30)
+    active_certificates = CertificateBundle.objects.filter(is_active=True)
     return render(request, "proxies/dashboard.html", {
         "proxies": proxies,
         "active_count": proxies.filter(enabled=True).count(),
-        "certificate_count": CertificateBundle.objects.filter(is_active=True).count(),
+        "certificate_count": active_certificates.count(),
+        "certificate_expiring_count": active_certificates.filter(valid_until__isnull=False, valid_until__lte=expiry_cutoff).count(),
         "audit_entries": AuditLog.objects.select_related("actor")[:6],
     })
 

@@ -7,6 +7,7 @@ class CertificateBundle(models.Model):
     name = models.CharField(max_length=120, unique=True)
     certificate = models.FileField(upload_to="certificates/", max_length=255)
     private_key = models.FileField(upload_to="keys/", max_length=255)
+    valid_until = models.DateField(null=True, blank=True)
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
@@ -21,6 +22,7 @@ class CertificateBundle(models.Model):
 class ProxyConfig(models.Model):
     PROTOCOLS = [("http", "HTTP"), ("https", "HTTPS")]
     domain_name = models.CharField(max_length=253, unique=True)
+    public_ip = models.GenericIPAddressField(protocol="both", null=True, blank=True)
     backend_private_ip = models.GenericIPAddressField(protocol="both")
     backend_port = models.PositiveIntegerField(validators=[MinValueValidator(1), MaxValueValidator(65535)])
     incoming_protocol = models.CharField(max_length=5, choices=PROTOCOLS, default="https")
