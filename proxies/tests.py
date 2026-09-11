@@ -13,6 +13,23 @@ from .services import OperationResult, recent_traffic_logs, render_proxy_config
 
 
 class ProxyValidationTests(TestCase):
+    @patch("proxies.views.recent_traffic_logs")
+    def test_live_traffic_rows_are_protected_fresh_and_escaped(self, logs):
+        self.assertEqual(self.client.get("/audit/rows/").status_code, 302)
+        user = get_user_model().objects.create_user("live-logs", is_staff=False)
+        self.client.force_login(user)
+        self.assertEqual(self.client.get("/audit/rows/").status_code, 403)
+        user.is_staff = True
+        user.save()
+        logs.return_value = [{"source_ip": "198.51.100.8", "request": "<script>alert(1)</script>"}]
+        response = self.client.get("/audit/rows/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertIn("198.51.100.8", response.json()["html"])
+        self.assertNotIn("<script>", response.json()["html"])
+        logs.return_value = []
+        self.assertIn("No incoming traffic", self.client.get("/audit/rows/").json()["html"])
+
     def test_sidebar_destinations_have_distinct_content(self):
         user = get_user_model().objects.create_user("navigation-operator", is_staff=True)
         self.client.force_login(user)

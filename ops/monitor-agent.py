@@ -4,6 +4,7 @@ import logging
 import os
 import time
 import urllib.request
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
 import psutil
 
@@ -48,6 +49,28 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def report_http_error(error):
+    hints = {
+        400: "Check Django ALLOWED_HOSTS and the agent metric format.",
+        401: "Check MONITOR_ADDRESS and MONITOR_TOKEN against the current NGINX host enrollment.",
+        403: "Check NGINX access rules and any authentication gateway in front of Django.",
+        404: "Set MONITOR_URL to the admin app's /monitor/ingest/ endpoint and deploy the updated Django routes.",
+        405: "Check that /monitor/ingest/ is routed to Django and accepts POST.",
+        413: "Check the request body size limit in NGINX.",
+        500: "Check the Django error log and run pending database migrations.",
+        502: "Check that the Django service is running and NGINX can reach it.",
+        503: "Check the Django service and any maintenance or access gateway.",
+        504: "Check the Django service for timeouts.",
+    }
+    hint = "Check the NGINX and Django error logs."
+    if 300 <= error.code < 400:
+        hint = "Redirect refused. Use the final HTTPS admin URL with /monitor/ingest/ and its trailing slash; check TLS redirect settings."
+    else:
+        hint = hints.get(error.code, hint)
+    # Never log URLs, headers, or response bodies: they can contain credentials.
+    logging.warning("Metric delivery failed: HTTP %s. %s Retrying.", error.code, hint)
+
+
 def main():
     url = os.environ["MONITOR_URL"]
     token = os.environ["MONITOR_TOKEN"]
@@ -58,6 +81,7 @@ def main():
     previous = psutil.net_io_counters(pernic=True)
     psutil.cpu_percent(interval=None)  # Prime the CPU counter before the first sample.
     last = time.monotonic()
+    failed = False
     while True:
         time.sleep(5)
         now = time.monotonic()
@@ -69,7 +93,15 @@ def main():
             })
             with opener.open(request, timeout=5) as response:
                 response.read(1024)
+            if failed:
+                logging.warning("Metric delivery recovered; measurements are being accepted.")
+                failed = False
+        except HTTPError as exc:
+            failed = True
+            report_http_error(exc)
+            exc.close()
         except Exception as exc:
+            failed = True
             logging.warning("Metric delivery failed (%s); retrying", type(exc).__name__)
 
 

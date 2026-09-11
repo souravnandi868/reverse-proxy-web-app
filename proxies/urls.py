@@ -17,5 +17,7 @@ urlpatterns = [
     path("proxies/<int:pk>/connectivity/", views.proxy_connectivity, name="proxy_connectivity"),
     path("proxies/<int:pk>/rollback/<int:backup_id>/", views.proxy_rollback, name="proxy_rollback"),
     path("certificates/", views.certificates, name="certificates"),
+    path("certificates/<int:pk>/delete/", views.certificate_delete, name="certificate_delete"),
     path("audit/", views.audit, name="audit"),
+    path("audit/rows/", views.traffic_rows, name="traffic_rows"),
 ]

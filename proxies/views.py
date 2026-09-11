@@ -2,7 +2,11 @@ from functools import wraps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, JsonResponse
+from django.template.loader import render_to_string
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_GET, require_POST
+from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
 from datetime import timedelta
 from django.utils import timezone
@@ -182,5 +186,32 @@ def certificates(request):
 
 
 @staff_required
+@require_POST
+def certificate_delete(request, pk):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden("Only administrators can delete certificate bundles.")
+    bundle = get_object_or_404(CertificateBundle, pk=pk)
+    name = bundle.name
+    try:
+        with transaction.atomic():
+            bundle.delete()
+            log_action(request, "delete", name, {"type": "certificate_bundle"})
+    except ProtectedError:
+        messages.error(request, f'Cannot delete "{name}": it is assigned to a proxy. Replace or detach it first.')
+    else:
+        # Existing applied configs and backups may still reference these PEM paths.
+        messages.success(request, f'Certificate bundle "{name}" deleted from the inventory. Stored PEM files are retained for existing configurations and backups.')
+    return redirect("certificates")
+
+
+@staff_required
 def audit(request):
     return render(request, "proxies/audit.html", {"traffic_logs": recent_traffic_logs()})
+
+
+@staff_required
+@require_GET
+@never_cache
+def traffic_rows(request):
+    html = render_to_string("proxies/traffic_rows.html", {"traffic_logs": recent_traffic_logs()}, request=request)
+    return JsonResponse({"html": html})
