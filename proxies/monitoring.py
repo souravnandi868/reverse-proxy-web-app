@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
-from .models import ProxyConfig, ServerMonitor
+from .models import ServerMonitor
 from .views import staff_required
 
 
@@ -54,7 +54,7 @@ def ingest(request):
     except ValueError:
         return JsonResponse({"error": "Unauthorized"}, status=401)
     authorization = request.headers.get("Authorization", "")
-    monitor = ServerMonitor.objects.filter(address=address).first()
+    monitor = ServerMonitor.objects.filter(address=address, is_reverse_proxy=True).first()
     if not monitor or not authorization.startswith("Bearer ") or not hmac.compare_digest(
         monitor.token_hash, hashlib.sha256(authorization[7:].encode()).hexdigest()
     ):
@@ -73,18 +73,13 @@ def ingest(request):
 
 
 def snapshots():
-    routes = {}
-    for proxy in ProxyConfig.objects.all():
-        routes.setdefault(proxy.backend_private_ip, []).append(proxy.domain_name)
-    monitors = {m.address: m for m in ServerMonitor.objects.all()}
     now = timezone.now()
     result = []
-    for address in sorted(routes.keys() | monitors.keys()):
-        monitor = monitors.get(address)
-        received = monitor.received_at if monitor else None
-        status = "not_configured" if monitor is None else "waiting" if received is None else (
+    for monitor in ServerMonitor.objects.filter(is_reverse_proxy=True):
+        received = monitor.received_at
+        status = "waiting" if received is None else (
             "live" if (now - received).total_seconds() <= 30 else "stale")
-        result.append({"address": address, "domains": routes.get(address, []), "status": status,
+        result.append({"address": monitor.address, "name": "NGINX reverse proxy server", "status": status,
                        "received_at": received.isoformat() if received else None,
                        "metrics": monitor.latest if received else None})
     return result

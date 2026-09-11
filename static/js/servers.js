@@ -47,14 +47,14 @@
   }
   function render(servers) {
     cards.replaceChildren();
-    if (!servers.length) cards.append(el('p', 'No servers yet. Add a reverse proxy or enroll a monitoring agent.', 'panel monitor-empty'));
+    if (!servers.length) cards.append(el('p', 'NGINX host monitoring is not configured. Enroll the reverse proxy server and start its monitoring agent.', 'panel monitor-empty'));
     const known = new Set(servers.map(s => s.address));
     for (const key of history.keys()) if (!known.has(key)) history.delete(key);
     servers.forEach(server => {
       const card = el('section', undefined, `panel server-card ${server.status}`);
       const heading = el('div', undefined, 'server-title');
-      heading.append(el('h2', server.address), el('span', labels[server.status], `server-state ${server.status}`));
-      card.append(heading, el('p', server.domains.join(', ') || 'Monitored server', 'server-subtitle'));
+      heading.append(el('h2', server.name), el('span', labels[server.status], `server-state ${server.status}`));
+      card.append(heading, el('p', server.address + ' ? Host-wide resource usage', 'server-subtitle'));
       cards.append(card);
       const m = server.metrics;
       if (!m) {

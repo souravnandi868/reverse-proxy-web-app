@@ -72,6 +72,7 @@ class AuditLog(models.Model):
 
 class ServerMonitor(models.Model):
     address = models.GenericIPAddressField(unique=True)
+    is_reverse_proxy = models.BooleanField(default=False)
     token_hash = models.CharField(max_length=64)
     latest = models.JSONField(default=dict)
     received_at = models.DateTimeField(null=True, blank=True)

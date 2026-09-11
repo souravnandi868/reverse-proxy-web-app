@@ -2,11 +2,13 @@ import hashlib
 import importlib.util
 import json
 import sys
+from io import StringIO
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import Client, TestCase
 from django.utils import timezone
 from .models import ProxyConfig, ServerMonitor
@@ -15,7 +17,7 @@ from .models import ProxyConfig, ServerMonitor
 class MonitoringTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user("monitor-user", is_staff=True)
-        self.monitor = ServerMonitor.objects.create(address="10.0.0.4", token_hash=hashlib.sha256(b"test-token").hexdigest())
+        self.monitor = ServerMonitor.objects.create(address="10.0.0.4", is_reverse_proxy=True, token_hash=hashlib.sha256(b"test-token").hexdigest())
         self.sample = {"cpu": 25, "ram": {"used": 400, "total": 1000, "percent": 40},
                        "disks": [{"mount": "/", "used": 10, "total": 100, "percent": 10}],
                        "interfaces": [{"name": "eth0", "rx": 100, "tx": 50, "speed_mbps": 1000}]}
@@ -42,14 +44,16 @@ class MonitoringTests(TestCase):
         self.monitor.refresh_from_db()
         self.assertEqual(self.monitor.latest, self.sample)
 
-    def test_snapshots_deduplicate_and_mark_stale(self):
+    def test_snapshots_only_show_nginx_host_and_mark_stale(self):
         for domain in ("one.example.com", "two.example.com"):
-            ProxyConfig.objects.create(domain_name=domain, backend_private_ip="10.0.0.4", backend_port=80,
+            ProxyConfig.objects.create(domain_name=domain, backend_private_ip="10.0.0.99", backend_port=80,
                                        created_by=self.user, updated_by=self.user)
         self.client.force_login(self.user)
         data = self.client.get("/servers/metrics/").json()["servers"]
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["status"], "waiting")
+        self.assertEqual(data[0]["address"], "10.0.0.4")
+        self.assertNotIn("domains", data[0])
         self.send()
         self.assertEqual(self.client.get("/servers/metrics/").json()["servers"][0]["status"], "live")
         ServerMonitor.objects.update(received_at=timezone.now() - timedelta(seconds=31))
@@ -66,6 +70,22 @@ class MonitoringTests(TestCase):
         self.client.force_login(self.user)
         for path in ("/servers/", "/servers/metrics/"):
             self.assertEqual(self.client.get(path).status_code, 403)
+
+    def test_old_backend_agent_is_excluded_and_rejected(self):
+        self.monitor.is_reverse_proxy = False
+        self.monitor.save()
+        self.assertEqual(self.send().status_code, 401)
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get("/servers/metrics/").json()["servers"], [])
+
+    def test_enrollment_selects_only_new_nginx_host(self):
+        output = StringIO()
+        call_command("enroll_monitor", "10.0.0.10", stdout=output)
+        self.monitor.refresh_from_db()
+        self.assertFalse(self.monitor.is_reverse_proxy)
+        self.assertEqual(ServerMonitor.objects.filter(is_reverse_proxy=True).get().address, "10.0.0.10")
+        self.assertEqual(self.send().status_code, 401)
+        self.assertIn("NGINX reverse proxy server", output.getvalue())
 
     def test_server_page_renders(self):
         self.client.force_login(self.user)

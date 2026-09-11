@@ -1,12 +1,12 @@
 {% extends 'base.html' %}{% load static %}
-{% block title %}Server Resources | Proxy Control{% endblock %}
-{% block heading %}Server Resources{% endblock %}
+{% block title %}NGINX Server Resources | Proxy Control{% endblock %}
+{% block heading %}NGINX Server Resources{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'css/servers.css' %}">{% endblock %}
 {% block content %}
 <section id="resource-monitor" data-url="{% url 'server_metrics' %}">
-  <div class="panel monitor-toolbar"><div><h2>Live server resources</h2><p>Updates every 5 seconds. Graphs show samples collected while this page is open.</p></div><span id="monitor-status" role="status">Connecting…</span></div>
+  <div class="panel monitor-toolbar"><div><h2>Reverse proxy host resources</h2><p>CPU, RAM, storage and network usage of the NGINX server itself. Updates every 5 seconds. Graphs show samples collected while this page is open.</p></div><span id="monitor-status" role="status">Connecting…</span></div>
   <div id="server-cards"></div>
   <noscript><p>Enable JavaScript to display live resource graphs.</p></noscript>
 </section>
-<script src="{% static 'js/servers.js' %}" defer></script>
+<script src="{% static 'js/servers.js' %}?v=2" defer></script>
 {% endblock %}
