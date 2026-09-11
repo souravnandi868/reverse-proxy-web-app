@@ -13,6 +13,29 @@ from .services import OperationResult, recent_traffic_logs, render_proxy_config
 
 
 class ProxyValidationTests(TestCase):
+    def test_sidebar_destinations_have_distinct_content(self):
+        user = get_user_model().objects.create_user("navigation-operator", is_staff=True)
+        self.client.force_login(user)
+        dashboard = self.client.get("/")
+        self.assertContains(dashboard, 'href="/proxies/"')
+        self.assertContains(dashboard, 'href="/domains/"')
+        routes = self.client.get("/proxies/")
+        self.assertTemplateUsed(routes, "proxies/proxy_list.html")
+        self.assertContains(routes, "Add Reverse Proxy")
+        self.assertNotContains(routes, 'class="stats"')
+        domains = self.client.get("/domains/")
+        self.assertTemplateUsed(domains, "proxies/domains.html")
+        self.assertContains(domains, "Resolved public IP")
+        self.assertNotContains(domains, "<th>Actions</th>")
+
+    def test_new_navigation_pages_require_staff(self):
+        for path in ("/proxies/", "/domains/"):
+            self.assertEqual(self.client.get(path).status_code, 302)
+        user = get_user_model().objects.create_user("navigation-viewer")
+        self.client.force_login(user)
+        for path in ("/proxies/", "/domains/"):
+            self.assertEqual(self.client.get(path).status_code, 403)
+
     @patch("proxies.forms.resolve_public_ip", return_value="8.8.8.8")
     def test_manual_public_ip_is_ignored_on_save(self, resolver):
         user = get_user_model().objects.create_user("dns-operator", is_staff=True)

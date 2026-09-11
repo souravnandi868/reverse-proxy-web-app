@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Domains &amp; IPs | Proxy Control{% endblock %}
+{% block heading %}Domains &amp; IPs{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="section-head"><div><h2>DNS mappings</h2><p>Public IP addresses are resolved automatically from each FQDN when its proxy is saved.</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>FQDN</th><th>Resolved public IP</th><th>Destination server</th><th>Incoming protocol</th></tr></thead>
+    <tbody>{% for proxy in proxies %}
+      <tr><td><a href="{% url 'proxy_edit' proxy.pk %}">{{ proxy.domain_name }}</a></td><td><code>{{ proxy.public_ip|default:'Not resolved' }}</code></td><td><code>{{ proxy.backend_private_ip }}:{{ proxy.backend_port }}</code></td><td>{{ proxy.get_incoming_protocol_display }}</td></tr>
+    {% empty %}<tr><td colspan="4" class="empty">No domains configured. <a href="{% url 'proxy_create' %}">Add a reverse proxy</a> to resolve its public IP.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

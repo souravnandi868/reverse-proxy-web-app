@@ -3,6 +3,8 @@ from . import views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+    path("proxies/", views.proxy_list, name="proxy_list"),
+    path("domains/", views.domains, name="domains"),
     path("proxies/new/", views.proxy_create, name="proxy_create"),
     path("proxies/<int:pk>/edit/", views.proxy_edit, name="proxy_edit"),
     path("proxies/<int:pk>/delete/", views.proxy_delete, name="proxy_delete"),

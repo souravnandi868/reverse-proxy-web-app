@@ -40,6 +40,18 @@ def dashboard(request):
 
 
 @staff_required
+def proxy_list(request):
+    return render(request, "proxies/proxy_list.html", {
+        "proxies": ProxyConfig.objects.select_related("certificate_bundle").all(),
+    })
+
+
+@staff_required
+def domains(request):
+    return render(request, "proxies/domains.html", {"proxies": ProxyConfig.objects.all()})
+
+
+@staff_required
 def proxy_create(request):
     form = ProxyConfigForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
