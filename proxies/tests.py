@@ -8,11 +8,43 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from .forms import CertificateBundleForm, ProxyConfigForm
-from .models import ProxyConfig
+from .models import AuditLog, ProxyConfig
 from .services import OperationResult, recent_traffic_logs, render_proxy_config
 
 
 class ProxyValidationTests(TestCase):
+    @patch("proxies.forms.resolve_public_ip", return_value="8.8.8.8")
+    def test_manual_public_ip_is_ignored_on_save(self, resolver):
+        user = get_user_model().objects.create_user("dns-operator", is_staff=True)
+        self.client.force_login(user)
+        response = self.client.post("/proxies/new/", {
+            "domain_name": "app.example.com", "public_ip": "1.1.1.1",
+            "backend_private_ip": "10.0.0.4", "backend_port": 8080,
+            "incoming_protocol": "http", "backend_protocol": "http", "enabled": True,
+        })
+        self.assertRedirects(response, "/")
+        self.assertEqual(ProxyConfig.objects.get().public_ip, "8.8.8.8")
+
+    def test_admin_public_ip_is_read_only(self):
+        user = get_user_model().objects.create_superuser("dns-admin", password="test-password")
+        self.client.force_login(user)
+        response = self.client.get("/admin/proxies/proxyconfig/add/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'name="public_ip"')
+        self.assertContains(response, "resolved automatically")
+
+    @patch("proxies.views.recent_traffic_logs")
+    def test_traffic_page_shows_connections_not_configuration_events(self, logs):
+        user = get_user_model().objects.create_user("traffic-operator", is_staff=True)
+        AuditLog.objects.create(actor=user, action="create", target="configuration-event.example.com")
+        logs.return_value = [{"source_ip": "198.51.100.8", "destination_fqdn": "app.example.com",
+                              "destination_server": "10.0.0.4:8080", "status": 200}]
+        self.client.force_login(user)
+        response = self.client.get("/audit/")
+        self.assertContains(response, "198.51.100.8")
+        self.assertContains(response, "10.0.0.4:8080")
+        self.assertNotContains(response, "configuration-event.example.com")
+
     def test_domain_is_strictly_validated(self):
         form = ProxyConfigForm(data={"domain_name": "bad_domain", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "https", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
         self.assertFalse(form.is_valid())
