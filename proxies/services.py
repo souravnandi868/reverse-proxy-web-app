@@ -62,13 +62,16 @@ def _request(action, payload):
     request = json.dumps({"action": action, "payload": payload}).encode("utf-8")
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.settimeout(10)
+            # Validation and reload each have a 15-second helper timeout.
+            client.settimeout(40)
             client.connect(str(SOCKET_PATH))
             client.sendall(request)
             response = json.loads(client.recv(4096).decode("utf-8"))
     except (OSError, ValueError) as exc:
         return OperationResult(False, f"Privileged service request failed: {exc}")
-    return OperationResult(bool(response.get("ok")), response.get("message", "Operation failed."))
+    if not isinstance(response, dict):
+        return OperationResult(False, "Invalid privileged service response.")
+    return OperationResult(response.get("ok") is True, response.get("message", "Operation failed."))
 
 
 def apply_proxy(proxy):

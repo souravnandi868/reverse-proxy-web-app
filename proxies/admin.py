@@ -8,5 +8,9 @@ class ProxyConfigAdmin(admin.ModelAdmin):
     form = ProxyConfigForm
     readonly_fields = ("public_ip",)
 
+    def has_delete_permission(self, request, obj=None):
+        # All proxy deletion must pass through the helper-backed confirmation view.
+        return False
+
 
 admin.site.register([CertificateBundle, ConfigurationBackup, AuditLog])

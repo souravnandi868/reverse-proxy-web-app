@@ -1,1 +1,17 @@
-{% extends 'base.html' %}{% block title %}Delete {{ proxy.domain_name }} | Proxy Control{% endblock %}{% block heading %}Delete proxy{% endblock %}{% block content %}<section class="panel narrow"><span class="eyebrow">IRREVERSIBLE ACTION</span><h2>Delete {{ proxy.domain_name }}?</h2><p class="muted">The proxy record and its backups will be removed. The managed NGINX file will be disabled before deletion.</p><form method="post">{% csrf_token %}<a class="button" href="{% url 'dashboard' %}">Cancel</a> <button class="button danger" type="submit">Delete proxy</button></form></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Delete {{ proxy.domain_name }} | Proxy Control{% endblock %}
+{% block heading %}Delete proxy{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <span class="eyebrow">IRREVERSIBLE ACTION</span>
+  <h2>Delete {{ proxy.domain_name }}?</h2>
+  <dl>
+    <dt>Exact FQDN</dt><dd>{{ proxy.domain_name }}</dd>
+    <dt>Backend address</dt><dd>{{ proxy.backend_protocol }}://{% if ':' in proxy.backend_private_ip %}[{{ proxy.backend_private_ip }}]{% else %}{{ proxy.backend_private_ip }}{% endif %}:{{ proxy.backend_port }}</dd>
+  </dl>
+  <p><strong>The active Nginx route will be removed.</strong> Requests through this route will no longer reach the backend.</p>
+  <p class="muted">After Nginx validates and reloads successfully, the proxy record and all its configuration backups will be permanently deleted. A deletion audit event will be retained.</p>
+  <p class="muted">Certificate bundles (including shared certificates), PEM files, access/error logs, DNS records, firewall and NAT configuration, and the hosted backend application will be retained.</p>
+  <form method="post">{% csrf_token %}<a class="button" href="{% url 'dashboard' %}">Cancel</a> <button class="button danger" type="submit">Delete proxy</button></form>
+</section>
+{% endblock %}

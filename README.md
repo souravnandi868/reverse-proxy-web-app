@@ -121,3 +121,13 @@ For an immediate manual refresh in the application's virtualenv:
 ```sh
 python manage.py refresh_proxy_metadata --all --dns-only
 ```
+
+## Proxy deletion safety
+
+Only authenticated superusers can delete a proxy, using the CSRF-protected POST confirmation page. Django admin deletion is disabled to prevent bypassing this workflow. GET only displays the exact domain and backend with a route-removal warning.
+
+Deletion passes a temporarily disabled in-memory proxy to the restricted Unix-socket helper; the saved enabled flag is never temporarily changed. The helper removes only the managed domain configuration, validates Nginx, and reloads it before acknowledging success. It restores the previous managed file on validation/reload failure or an exception. Certificate bundles and PEM files (including shared certificates), access/error logs, DNS, firewall/NAT configuration, and backend applications are untouched.
+
+After acknowledgement, a short database transaction checks for intervening proxy changes and deletes the proxy together with an independent audit event containing only domain, public IP, backend IP/port, incoming/backend protocols, and the original enabled flag. ConfigurationBackup records cascade with their proxy; the audit event survives. No database transaction is held while waiting for Nginx, including when ATOMIC_REQUESTS is enabled.
+
+Nginx and the database cannot participate in a single atomic transaction. A lost acknowledgement, worker exit, concurrent edit, or database/audit failure after helper success can leave the route removed while the database record remains. The original saved enabled state is preserved; review and reapply the retained proxy or retry deletion to reconcile it. A reload timeout also leaves runtime state uncertain even when the previous managed file is restored. If filesystem restoration fails, operator recovery is required. The updated helper must accompany the application change to provide file restoration on reload failures; the socket request/response format is unchanged.

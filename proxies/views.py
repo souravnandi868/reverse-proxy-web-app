@@ -5,7 +5,7 @@ from django.db import transaction
 from django.http import HttpResponseForbidden, JsonResponse
 from django.template.loader import render_to_string
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
 from datetime import timedelta
@@ -87,25 +87,40 @@ def proxy_edit(request, pk):
     return render(request, "proxies/proxy_form.html", {"form": form, "title": f"Edit {proxy.domain_name}", "proxy": proxy})
 
 
-@staff_required
+@transaction.non_atomic_requests
+@login_required
+@require_http_methods(["GET", "POST"])
 def proxy_delete(request, pk):
-    proxy = get_object_or_404(ProxyConfig, pk=pk)
     if not request.user.is_superuser:
         return HttpResponseForbidden("Only administrators can delete proxy configurations.")
+    proxy = get_object_or_404(ProxyConfig, pk=pk)
     if request.method == "POST":
         domain = proxy.domain_name
-        with transaction.atomic():
-            save_backup(proxy, request.user, "before deletion")
-            proxy.enabled = False
-            proxy.updated_by = request.user
-            proxy.save(update_fields=["enabled", "updated_by", "updated_at"])
-        result = apply_proxy(proxy)
-        if not result.ok:
-            messages.error(request, result.message)
-            return redirect("dashboard")
-        proxy.delete()
-        log_action(request, "delete", domain)
-        messages.success(request, "Proxy deleted after disabling its managed configuration.")
+        original = {field.attname: getattr(proxy, field.attname) for field in ProxyConfig._meta.concrete_fields}
+        snapshot = {name: original[name] for name in (
+            "domain_name", "public_ip", "backend_private_ip", "backend_port",
+            "incoming_protocol", "backend_protocol", "enabled",
+        )}
+        # Only the helper payload needs the disabled state. Keeping it out of the
+        # database also preserves the original state on timeouts or worker exits.
+        proxy.enabled = False
+        try:
+            result = apply_proxy(proxy)
+            if result.ok is not True:
+                messages.error(request, "Proxy retained: the NGINX helper could not confirm route removal, validation and reload. Its saved enabled state was not changed. Review the helper and NGINX service; reapply the proxy or retry deletion if the route was already removed.")
+                return redirect("dashboard")
+            with transaction.atomic():
+                current = ProxyConfig.objects.select_for_update().get(pk=pk)
+                if any(getattr(current, name) != value for name, value in original.items()):
+                    raise ValueError("Proxy changed during removal")
+                current.delete()
+                log_action(request, "delete", domain, snapshot)
+        except Exception:
+            messages.error(request, "Proxy retained: deletion could not be completed. Its saved enabled state was not changed. The NGINX route may already be removed; review and reapply the proxy or retry deletion.")
+        else:
+            messages.success(request, "Proxy and its backups deleted after managed route removal, NGINX validation and reload. Certificates and logs were retained.")
+        finally:
+            proxy.enabled = original["enabled"]
         return redirect("dashboard")
     return render(request, "proxies/confirm_delete.html", {"proxy": proxy})
 
