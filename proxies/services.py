@@ -29,6 +29,24 @@ def render_proxy_config(proxy):
     return f"""# Managed by NGINX Proxy Admin. Do not edit manually.\nserver {{\n    listen {listen};\n    server_name {proxy.domain_name};\n    access_log {log_path} proxy_admin;\n    error_log {error_log_path} warn;\n{ssl_block}    location / {{\n        proxy_pass {proxy.backend_protocol}://{proxy.backend_private_ip}:{proxy.backend_port};\n{upstream_tls}        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_connect_timeout 5s;\n        proxy_read_timeout 60s;\n    }}\n}}\n"""
 
 
+def recent_traffic_logs(limit=100):
+    log_dir = Path(getattr(settings, "NGINX_ACCESS_LOG_DIR", "/var/log/nginx/proxy-admin"))
+    entries = []
+    for log_path in log_dir.glob("*.access.log"):
+        try:
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines[-limit:]:
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            entry["log_file"] = log_path.name
+            entries.append(entry)
+    return sorted(entries, key=lambda entry: entry.get("time", ""), reverse=True)[:limit]
+
+
 def next_backup_version(proxy):
     latest = proxy.backups.order_by("-version").first()
     return (latest.version + 1) if latest else 1

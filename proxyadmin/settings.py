@@ -52,6 +52,7 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = Path(os.environ.get("DJANGO_MEDIA_ROOT", BASE_DIR / "private_media"))
 MEDIA_URL = "/private-media/"
+NGINX_ACCESS_LOG_DIR = os.environ.get("NGINX_ACCESS_LOG_DIR", "/var/log/nginx/proxy-admin")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"

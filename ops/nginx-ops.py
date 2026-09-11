@@ -11,7 +11,7 @@ SOCKET = Path("/run/nginx-proxy-admin/ops.sock")
 NGINX_DIR = Path("/etc/nginx/conf.d/proxy-admin")
 LOG_DIR = Path("/var/log/nginx/proxy-admin")
 LOG_FORMAT_CONFIG = Path("/etc/nginx/conf.d/00-proxy-admin-logging.conf")
-LOG_FORMAT = "log_format proxy_admin '$remote_addr [$time_iso8601] \\\"$request\\\" host=$host server=$server_name upstream=$upstream_addr status=$status bytes=$body_bytes_sent request_time=$request_time referer=\\\"$http_referer\\\" user_agent=\\\"$http_user_agent\\\"';\n"
+LOG_FORMAT = "log_format proxy_admin escape=json '{\\\"time\\\":\\\"$time_iso8601\\\",\\\"source_ip\\\":\\\"$remote_addr\\\",\\\"destination_fqdn\\\":\\\"$host\\\",\\\"destination_server\\\":\\\"$upstream_addr\\\",\\\"request\\\":\\\"$request\\\",\\\"status\\\":$status,\\\"bytes\\\":$body_bytes_sent,\\\"request_time\\\":$request_time,\\\"user_agent\\\":\\\"$http_user_agent\\\"}';\n"
 
 
 def reply(conn, ok, message):

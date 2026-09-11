@@ -1,12 +1,15 @@
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.test import override_settings
 from datetime import date
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from .forms import CertificateBundleForm, ProxyConfigForm
 from .models import ProxyConfig
-from .services import OperationResult, render_proxy_config
+from .services import OperationResult, recent_traffic_logs, render_proxy_config
 
 
 class ProxyValidationTests(TestCase):
@@ -33,6 +36,7 @@ class ProxyValidationTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data["public_ip"], "203.0.113.10")
         resolve_public_ip.assert_called_once_with("app.example.com")
+        self.assertNotIn("public_ip", form.fields)
 
     @patch("proxies.forms.resolve_public_ip", return_value=None)
     def test_public_ip_requires_fqdn_resolution(self, resolve_public_ip):
@@ -61,7 +65,19 @@ class ProxyValidationTests(TestCase):
         rendered = render_proxy_config(proxy)
         self.assertIn("proxy_pass https://10.0.0.4:8080;", rendered)
         self.assertIn("proxy_ssl_server_name on;", rendered)
+        self.assertIn("access_log /var/log/nginx/proxy-admin/app.example.com.access.log proxy_admin;", rendered)
         self.assertNotIn("subprocess", rendered)
+
+    def test_recent_traffic_logs_reads_source_and_destination(self):
+        with TemporaryDirectory() as log_dir:
+            Path(log_dir, "app.example.com.access.log").write_text(
+                '{"time":"2026-09-11T10:00:00+00:00","source_ip":"198.51.100.8","destination_fqdn":"app.example.com","destination_server":"10.0.0.4:8080","request":"GET /health HTTP/1.1","status":200,"bytes":12,"request_time":0.004,"user_agent":"Test"}\n',
+                encoding="utf-8",
+            )
+            with override_settings(NGINX_ACCESS_LOG_DIR=log_dir):
+                logs = recent_traffic_logs()
+        self.assertEqual(logs[0]["source_ip"], "198.51.100.8")
+        self.assertEqual(logs[0]["destination_server"], "10.0.0.4:8080")
 
     def test_non_staff_cannot_access_dashboard(self):
         user = get_user_model().objects.create_user("viewer", password="correct horse battery staple")

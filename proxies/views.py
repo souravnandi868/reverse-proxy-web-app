@@ -1,7 +1,6 @@
 from functools import wraps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -9,7 +8,7 @@ from datetime import timedelta
 from django.utils import timezone
 from .forms import CertificateBundleForm, ProxyConfigForm
 from .models import AuditLog, CertificateBundle, ProxyConfig
-from .services import apply_proxy, rollback_proxy, save_backup, test_backend
+from .services import apply_proxy, recent_traffic_logs, rollback_proxy, save_backup, test_backend
 
 
 def staff_required(view):
@@ -36,7 +35,7 @@ def dashboard(request):
         "active_count": proxies.filter(enabled=True).count(),
         "certificate_count": active_certificates.count(),
         "certificate_expiring_count": active_certificates.filter(valid_until__isnull=False, valid_until__lte=expiry_cutoff).count(),
-        "audit_entries": AuditLog.objects.select_related("actor")[:6],
+        "traffic_logs": recent_traffic_logs(6),
     })
 
 
@@ -169,5 +168,4 @@ def certificates(request):
 
 @staff_required
 def audit(request):
-    page = Paginator(AuditLog.objects.select_related("actor"), 25).get_page(request.GET.get("page"))
-    return render(request, "proxies/audit.html", {"page": page})
+    return render(request, "proxies/audit.html", {"traffic_logs": recent_traffic_logs()})
