@@ -37,7 +37,8 @@ def validate_metrics(data):
         raise ValueError("Invalid device list")
     return {
         "cpu": number(data["cpu"], 100), "ram": capacity(data["ram"]),
-        "disks": [dict(capacity(d), mount=label(d["mount"])) for d in disks],
+        "disks": [dict(capacity(d), mount=label(d["mount"]),
+                       free=number(d.get("free", d["total"] - d["used"]), d["total"])) for d in disks],
         "interfaces": [{"name": label(n["name"]), "rx": number(n["rx"]), "tx": number(n["tx"]),
                         "speed_mbps": number(n["speed_mbps"], 1e9)} for n in interfaces],
     }

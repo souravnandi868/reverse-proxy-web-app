@@ -63,7 +63,8 @@
       }
       card.append(el('p', `Last received: ${new Date(server.received_at).toLocaleString()}`, 'server-subtitle'));
       let h = history.get(server.address) || {time: null, samples: []};
-      const disk = Math.max(0, ...m.disks.map(d => d.percent));
+      const nginxDisks = m.disks.filter(d => d.mount.replace(/\/+$/, '') === '/var/log/nginx');
+      const disk = nginxDisks.length ? nginxDisks[0].percent : 0;
       const rx = m.interfaces.reduce((sum, n) => sum + n.rx, 0);
       const tx = m.interfaces.reduce((sum, n) => sum + n.tx, 0);
       if (server.status === 'live' && h.time !== server.received_at) {
@@ -76,15 +77,17 @@
       const grid = el('div', undefined, 'resource-grid');
       grid.append(resource('CPU', `${m.cpu.toFixed(1)}%`, 'Total processor utilization', [values('cpu')], ['#0875df'], m.cpu));
       grid.append(resource('RAM', `${m.ram.percent.toFixed(1)}%`, `${bytes(m.ram.used)} / ${bytes(m.ram.total)}`, [values('ram')], ['#15986a'], m.ram.percent));
-      grid.append(resource('Storage', m.disks.length ? `${disk.toFixed(1)}%` : 'Unavailable', 'Most-used reported filesystem', [values('disk')], ['#d68b00'], disk));
+      grid.append(resource('NGINX log storage', nginxDisks.length ? `${disk.toFixed(1)}%` : 'Unavailable', 'Filesystem containing /var/log/nginx/', [values('disk')], ['#d68b00'], disk));
       grid.append(resource('Network', `${bytes(rx)}/s`, `Receive (blue) · Send (purple): ${bytes(tx)}/s; auto-scaled graph`, [values('rx'), values('tx')], ['#0875df', '#8b5cf6']));
       card.append(grid);
       const devices = el('div', undefined, 'server-devices');
-      const disks = el('div'); disks.append(el('h3', 'Storage by mount'));
-      m.disks.forEach(d => {
+      const disks = el('div'); disks.append(el('h3', 'NGINX log storage'));
+      nginxDisks.forEach(d => {
         const row = el('div', undefined, 'device-row');
-        row.append(el('span', d.mount), el('span', `${bytes(d.used)} / ${bytes(d.total)} (${d.percent.toFixed(1)}%)`)); disks.append(row);
+        row.append(el('span', d.mount), el('span', `${bytes(d.used)} used / ${bytes(d.total)} total ? ${bytes(d.free ?? (d.total - d.used))} available (${d.percent.toFixed(1)}% used)`)); disks.append(row);
       });
+      if (!nginxDisks.length) disks.append(el('p', 'Storage data unavailable. Update the agent and check access to /var/log/nginx/.', 'server-subtitle'));
+      disks.append(el('p', 'Space on the filesystem containing this directory, including other files on that filesystem.', 'server-subtitle'));
       const network = el('div'); network.append(el('h3', 'Network by interface'));
       m.interfaces.forEach(n => {
         const utilization = n.speed_mbps > 0 ? `${(Math.max(n.rx, n.tx) * 8 / (n.speed_mbps * 1e6) * 100).toFixed(1)}% of ${n.speed_mbps} Mbps link` : 'Link capacity unknown';

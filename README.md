@@ -42,7 +42,7 @@ The main NGINX `http` block must include `/etc/nginx/conf.d/*.conf`. Give the Dj
 
 ## NGINX reverse proxy host monitoring
 
-Open **NGINX Server** for CPU, RAM, storage by mount, and network RX/TX graphs. The page polls every 5 seconds and keeps the last 60 distinct samples in the browser. Only the latest sample is stored in the database; this is not historical monitoring. A sample older than 30 seconds is marked stale, not offline. Only the explicitly enrolled NGINX host is shown. Backend routes never create monitoring targets.
+Open **NGINX Server** for CPU, RAM, filesystem space at `/var/log/nginx/`, and network RX/TX graphs. The page polls every 5 seconds and keeps the last 60 distinct samples in the browser. Only the latest sample is stored in the database; this is not historical monitoring. A sample older than 30 seconds is marked stale, not offline. Only the explicitly enrolled NGINX host is shown. Backend routes never create monitoring targets.
 
 Install the agent only on the Oracle Linux 9.5 host running NGINX. No software is required on hosted/backend servers. No inbound agent port is needed. The agent sends metrics to the Django application over HTTPS using the enrolled NGINX host token. The IP identifies the server and does not need to match the outbound NAT address.
 
@@ -89,7 +89,7 @@ sudo systemctl enable --now proxy-monitor-agent
 sudo journalctl -u proxy-monitor-agent -n 30 --no-pager
 ```
 
-The agent runs unprivileged. Only readable, mounted filesystems are reported. Network rates use counter differences over elapsed time; per-interface utilization is the larger of RX/TX divided by the reported link speed, not Internet bandwidth. Unknown link speeds are labeled accordingly. Aggregated traffic can count the same packet on bridges or virtual interfaces; use the per-interface details for diagnosis.
+The agent runs unprivileged. Storage reports only the filesystem containing `/var/log/nginx/`, including used, total, and available bytes. It does not calculate the size of the log directory itself. Missing or inaccessible paths are shown as unavailable. After updating the app, copy the updated `ops/monitor-agent.py` to `/opt/proxy-monitor/monitor-agent.py` and restart `proxy-monitor-agent`. Network rates use counter differences over elapsed time; per-interface utilization is the larger of RX/TX divided by the reported link speed, not Internet bandwidth. Unknown link speeds are labeled accordingly. Aggregated traffic can count the same packet on bridges or virtual interfaces; use the per-interface details for diagnosis.
 
 These measurements describe the whole NGINX host, including all processes and interface traffic; they are not NGINX-process-only metrics. The Live label means the resource agent is reporting, not that the NGINX service has passed a health check.
 

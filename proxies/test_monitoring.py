@@ -19,7 +19,7 @@ class MonitoringTests(TestCase):
         self.user = get_user_model().objects.create_user("monitor-user", is_staff=True)
         self.monitor = ServerMonitor.objects.create(address="10.0.0.4", is_reverse_proxy=True, token_hash=hashlib.sha256(b"test-token").hexdigest())
         self.sample = {"cpu": 25, "ram": {"used": 400, "total": 1000, "percent": 40},
-                       "disks": [{"mount": "/", "used": 10, "total": 100, "percent": 10}],
+                       "disks": [{"mount": "/var/log/nginx/", "used": 10, "total": 100, "free": 85, "percent": 10}],
                        "interfaces": [{"name": "eth0", "rx": 100, "tx": 50, "speed_mbps": 1000}]}
 
     def send(self, sample=None, token="test-token"):
@@ -102,3 +102,15 @@ class MonitoringTests(TestCase):
         result = module.network_rates(previous, current, 5, stats)
         self.assertEqual(result[0]["rx"], 200)
         self.assertEqual(result[0]["tx"], 0)
+
+    def test_agent_reads_only_nginx_log_filesystem(self):
+        spec = importlib.util.spec_from_file_location("monitor_agent", Path(__file__).resolve().parent.parent / "ops/monitor-agent.py")
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"psutil": SimpleNamespace()}):
+            spec.loader.exec_module(module)
+        with patch.object(module.psutil, "disk_usage", create=True) as usage:
+            usage.return_value = SimpleNamespace(used=10, total=100, free=85, percent=10)
+            self.assertEqual(module.nginx_storage(), self.sample["disks"])
+            usage.assert_called_once_with("/var/log/nginx/")
+            usage.side_effect = PermissionError()
+            self.assertEqual(module.nginx_storage(), [])

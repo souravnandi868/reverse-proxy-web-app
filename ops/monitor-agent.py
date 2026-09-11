@@ -23,21 +23,23 @@ def network_rates(previous, current, elapsed, stats):
     return interfaces[:128]
 
 
+def nginx_storage():
+    # disk_usage accepts a directory even when it is not a separate mount.
+    path = "/var/log/nginx/"
+    try:
+        usage = psutil.disk_usage(path)
+    except OSError:
+        return []
+    if not usage.total:
+        return []
+    return [{"mount": path, "used": usage.used, "total": usage.total,
+             "free": usage.free, "percent": usage.percent}]
+
+
 def collect(previous, elapsed):
     current = psutil.net_io_counters(pernic=True)
     memory = psutil.virtual_memory()
-    disks = []
-    seen = set()
-    for partition in psutil.disk_partitions(all=False):
-        if partition.mountpoint in seen:
-            continue
-        seen.add(partition.mountpoint)
-        try:
-            usage = psutil.disk_usage(partition.mountpoint)
-        except OSError:
-            continue
-        if usage.total:
-            disks.append({"mount": partition.mountpoint, "used": usage.used, "total": usage.total, "percent": usage.percent})
+    disks = nginx_storage()
     return {"cpu": psutil.cpu_percent(interval=None),
             "ram": {"used": memory.total - memory.available, "total": memory.total, "percent": memory.percent},
             "disks": disks[:128],
