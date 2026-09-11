@@ -18,7 +18,7 @@
       <a href="{% url 'proxy_list' %}" class="nav-link {% if request.resolver_match.url_name == 'proxy_list' or request.resolver_match.url_name == 'proxy_create' or request.resolver_match.url_name == 'proxy_edit' or request.resolver_match.url_name == 'proxy_delete' %}active{% endif %}"><span>▤</span>Reverse Proxies</a>
       <a href="{% url 'domains' %}" class="nav-link {% if request.resolver_match.url_name == 'domains' %}active{% endif %}"><span>◎</span>Domains &amp; IPs</a>
       <a href="{% url 'certificates' %}" class="nav-link"><span>⬟</span>SSL Certificates</a>
-      <a href="{% url 'dashboard' %}#servers" class="nav-link"><span>▦</span>Backend Servers</a>
+      <a href="{% url 'servers' %}" class="nav-link {% if request.resolver_match.url_name == 'servers' %}active{% endif %}"><span>▦</span>Backend Servers</a>
       <a href="{% url 'audit' %}" class="nav-link"><span>▣</span>Incoming Traffic</a>
       <a href="/admin/" class="nav-link"><span>⚙</span>Settings</a>
     </nav>

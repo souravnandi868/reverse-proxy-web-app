@@ -27,6 +27,7 @@ def log_action(request, action, target, detail=None):
 
 @staff_required
 def dashboard(request):
+    from .monitoring import snapshots
     proxies = ProxyConfig.objects.select_related("certificate_bundle").all()
     expiry_cutoff = timezone.localdate() + timedelta(days=30)
     active_certificates = CertificateBundle.objects.filter(is_active=True)
@@ -36,6 +37,7 @@ def dashboard(request):
         "certificate_count": active_certificates.count(),
         "certificate_expiring_count": active_certificates.filter(valid_until__isnull=False, valid_until__lte=expiry_cutoff).count(),
         "traffic_logs": recent_traffic_logs(6),
+        "reporting_count": sum(server["status"] == "live" for server in snapshots()),
     })
 
 

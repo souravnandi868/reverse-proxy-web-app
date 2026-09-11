@@ -39,3 +39,57 @@ systemctl reload nginx
 ```
 
 The main NGINX `http` block must include `/etc/nginx/conf.d/*.conf`. Give the Django service account membership in the `nginx` group and read access to the access logs, including after log rotation. Set `NGINX_ACCESS_LOG_DIR` if logs are stored elsewhere. The incoming IP is the direct peer seen by NGINX; if a trusted load balancer sits in front, configure NGINX real-IP handling for that balancer to record the original client.
+
+## Live server resources
+
+Open **Backend Servers** for CPU, RAM, storage by mount, and network RX/TX graphs. The page polls every 5 seconds and keeps the last 60 distinct samples in the browser. Only the latest sample is stored in the database; this is not historical monitoring. A sample older than 30 seconds is marked stale, not offline. Duplicate proxy routes to the same IP share one server card.
+
+Metrics require an agent on every host you want to monitor, including the NGINX host if desired. No inbound agent port is needed. The agent sends metrics to the Django application over HTTPS using a different token for each enrolled IP. The IP identifies the server and does not need to match the outbound NAT address.
+
+After pulling this update on the app server:
+
+```sh
+source .venv/bin/activate
+python manage.py migrate
+python manage.py collectstatic --noinput
+python manage.py enroll_monitor 10.0.0.4
+```
+
+Restart your Django service. Save the generated token securely; rerunning enrollment rotates it. To revoke an agent, delete its ServerMonitor record using the Django shell or rotate its token. Enroll each backend's exact configured IP; enroll the NGINX host separately to see its resources as well.
+
+### Oracle Linux 9.5 agent installation
+
+On each monitored server, copy `ops/monitor-agent.py`, `ops/monitor-requirements.txt`, and `deploy/proxy-monitor-agent.service` from this repository. From that checkout:
+
+```sh
+sudo dnf install -y python3.11 python3.11-pip
+sudo install -d -m 0755 /opt/proxy-monitor
+sudo install -m 0644 ops/monitor-agent.py ops/monitor-requirements.txt /opt/proxy-monitor/
+sudo python3.11 -m venv /opt/proxy-monitor/.venv
+sudo /opt/proxy-monitor/.venv/bin/pip install -r /opt/proxy-monitor/monitor-requirements.txt
+sudo install -m 0644 deploy/proxy-monitor-agent.service /etc/systemd/system/
+sudo install -m 0600 /dev/null /etc/proxy-monitor-agent.env
+sudo vi /etc/proxy-monitor-agent.env
+```
+
+Set these values in that root-readable environment file:
+
+```ini
+MONITOR_URL=https://YOUR-ADMIN-DOMAIN/monitor/ingest/
+MONITOR_ADDRESS=10.0.0.4
+MONITOR_TOKEN=TOKEN_FROM_ENROLLMENT
+```
+
+Use the application's HTTPS address, not a proxied backend domain. The certificate must be trusted by Python. For a private CA, set `SSL_CERT_FILE` to the CA bundle in the same environment file. Preserve the trailing slash; the agent deliberately refuses redirects. NGINX must forward `/monitor/ingest/` and its Authorization header to Django. Keep the endpoint request body limit at least 64 KiB.
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now proxy-monitor-agent
+sudo journalctl -u proxy-monitor-agent -n 30 --no-pager
+```
+
+The agent runs unprivileged. Only readable, mounted filesystems are reported. Network rates use counter differences over elapsed time; per-interface utilization is the larger of RX/TX divided by the reported link speed, not Internet bandwidth. Unknown link speeds are labeled accordingly. Aggregated traffic can count the same packet on bridges or virtual interfaces; use the per-interface details for diagnosis.
+
+The same agent also runs on Windows with Python and `pip install -r ops/monitor-requirements.txt`; set the three environment variables and run `python ops/monitor-agent.py` under your service manager or Task Scheduler.
+
+Metric collection follows the [psutil documentation](https://psutil.readthedocs.io/stable/).

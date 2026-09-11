@@ -1,10 +1,14 @@
 from django.urls import path
 from . import views
+from . import monitoring
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
     path("proxies/", views.proxy_list, name="proxy_list"),
     path("domains/", views.domains, name="domains"),
+    path("servers/", monitoring.servers, name="servers"),
+    path("servers/metrics/", monitoring.server_metrics, name="server_metrics"),
+    path("monitor/ingest/", monitoring.ingest, name="monitor_ingest"),
     path("proxies/new/", views.proxy_create, name="proxy_create"),
     path("proxies/<int:pk>/edit/", views.proxy_edit, name="proxy_edit"),
     path("proxies/<int:pk>/delete/", views.proxy_delete, name="proxy_delete"),

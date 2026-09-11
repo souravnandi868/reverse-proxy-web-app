@@ -68,3 +68,10 @@ class AuditLog(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class ServerMonitor(models.Model):
+    address = models.GenericIPAddressField(unique=True)
+    token_hash = models.CharField(max_length=64)
+    latest = models.JSONField(default=dict)
+    received_at = models.DateTimeField(null=True, blank=True)

@@ -1,0 +1,18 @@
+[Unit]
+Description=Proxy Control server resource monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=true
+EnvironmentFile=/etc/proxy-monitor-agent.env
+ExecStart=/opt/proxy-monitor/.venv/bin/python /opt/proxy-monitor/monitor-agent.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
