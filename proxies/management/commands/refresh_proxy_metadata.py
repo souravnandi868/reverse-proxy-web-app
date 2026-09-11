@@ -8,6 +8,7 @@ class Command(BaseCommand):
     help = "Resolve proxy public IPs and extract certificate validity dates."
 
     def add_arguments(self, parser):
+        parser.add_argument("--dns-only", action="store_true", help="Refresh public IPs without reading certificate files.")
         parser.add_argument(
             "--all",
             action="store_true",
@@ -24,13 +25,19 @@ class Command(BaseCommand):
             proxies = proxies.filter(public_ip__isnull=True)
         for proxy in proxies:
             public_ip = resolve_public_ip(proxy.domain_name)
-            if public_ip and (refresh_all or not proxy.public_ip):
-                proxy.public_ip = public_ip
-                proxy.save(update_fields=["public_ip", "updated_at"])
-                proxy_count += 1
-                self.stdout.write(f"{proxy.domain_name}: {public_ip}")
+            if public_ip and public_ip != proxy.public_ip:
+                # Avoid overwriting a proxy renamed or edited while DNS was resolving.
+                updated = ProxyConfig.objects.filter(pk=proxy.pk, domain_name=proxy.domain_name,
+                                                     public_ip=proxy.public_ip).update(public_ip=public_ip)
+                proxy_count += updated
+                if updated:
+                    self.stdout.write(f"{proxy.domain_name}: {public_ip}")
+            elif not public_ip:
+                self.stderr.write(self.style.WARNING(f"{proxy.domain_name}: DNS lookup failed or returned no public IP; keeping previous value."))
 
         certificates = CertificateBundle.objects.all()
+        if options["dns_only"]:
+            certificates = certificates.none()
         if not refresh_all:
             certificates = certificates.filter(valid_until__isnull=True)
         for certificate in certificates:

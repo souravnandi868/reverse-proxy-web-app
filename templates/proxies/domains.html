@@ -3,7 +3,7 @@
 {% block heading %}Domains &amp; IPs{% endblock %}
 {% block content %}
 <section class="panel">
-  <div class="section-head"><div><h2>DNS mappings</h2><p>Public IP addresses are resolved automatically from each FQDN when its proxy is saved.</p></div></div>
+  <div class="section-head"><div><h2>DNS mappings</h2><p>Public IP addresses are resolved from each FQDN on save and checked every 5 minutes when scheduled DNS refresh is enabled.</p></div></div>
   <div class="table-wrap"><table>
     <thead><tr><th>FQDN</th><th>Resolved public IP</th><th>Destination server</th><th>Incoming protocol</th></tr></thead>
     <tbody>{% for proxy in proxies %}

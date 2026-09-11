@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh public IPs every five minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/5:00
+AccuracySec=1s
+Persistent=true
+Unit=proxy-dns-refresh.service
+
+[Install]
+WantedBy=timers.target

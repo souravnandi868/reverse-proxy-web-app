@@ -40,7 +40,7 @@ class ProxyConfigForm(forms.ModelForm):
         model = ProxyConfig
         fields = ["domain_name", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "enabled"]
         help_texts = {
-            "domain_name": "The public IP is resolved automatically from this FQDN when you save.",
+            "domain_name": "The public IP is resolved automatically from this FQDN on save. Scheduled DNS refresh checks it every 5 minutes when enabled.",
         }
         widgets = {
             "domain_name": forms.TextInput(attrs={"placeholder": "app.example.com"}),

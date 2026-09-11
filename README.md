@@ -94,3 +94,30 @@ The agent runs unprivileged. Storage reports only the filesystem containing `/va
 These measurements describe the whole NGINX host, including all processes and interface traffic; they are not NGINX-process-only metrics. The Live label means the resource agent is reporting, not that the NGINX service has passed a health check.
 
 Metric collection follows the [psutil documentation](https://psutil.readthedocs.io/stable/).
+
+## Automatic DNS refresh every five minutes
+
+Install the supplied systemd timer on the Django app server. It checks every saved FQDN (including disabled routes) every five minutes, even when nobody has the dashboard open. Only changed public IPs are written; proxy configuration timestamps and NGINX configuration are not changed. Failed lookups keep the last known public IP and produce a journal warning. DNS resolver caching/TTL still applies. Reload an open dashboard or Domains & IPs page to see the latest saved IP.
+
+From the project directory on Oracle Linux 9.5:
+
+```sh
+sudo install -m 0644 deploy/proxy-dns-refresh.service deploy/proxy-dns-refresh.timer /etc/systemd/system/
+sudo vi /etc/systemd/system/proxy-dns-refresh.service
+```
+
+Before enabling, match `User`, `Group`, `WorkingDirectory`, `ExecStart`, and `EnvironmentFile` to your Django deployment. The example uses account `nginxproxy`, project `/opt/proxy-admin`, and virtualenv `.venv`. If your virtualenv is `venv`, change the executable to `/opt/proxy-admin/venv/bin/python`. Use the same database settings/environment as Django and an account able to write its database. Do not create a separate database for the timer.
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl start proxy-dns-refresh.service
+sudo systemctl enable --now proxy-dns-refresh.timer
+sudo systemctl list-timers proxy-dns-refresh.timer
+sudo journalctl -u proxy-dns-refresh.service -n 30 --no-pager
+```
+
+For an immediate manual refresh in the application's virtualenv:
+
+```sh
+python manage.py refresh_proxy_metadata --all --dns-only
+```

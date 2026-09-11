@@ -1,0 +1,16 @@
+[Unit]
+Description=Refresh reverse proxy public IPs from DNS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Match the account, project directory, virtualenv and environment of Django.
+User=nginxproxy
+Group=nginxproxy
+WorkingDirectory=/opt/proxy-admin
+EnvironmentFile=-/etc/proxy-admin.env
+ExecStart=/opt/proxy-admin/.venv/bin/python manage.py refresh_proxy_metadata --all --dns-only
+TimeoutStartSec=240
+NoNewPrivileges=true
+PrivateTmp=true
