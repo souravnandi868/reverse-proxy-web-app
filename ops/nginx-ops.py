@@ -9,6 +9,9 @@ from pathlib import Path
 
 SOCKET = Path("/run/nginx-proxy-admin/ops.sock")
 NGINX_DIR = Path("/etc/nginx/conf.d/proxy-admin")
+LOG_DIR = Path("/var/log/nginx/proxy-admin")
+LOG_FORMAT_CONFIG = Path("/etc/nginx/conf.d/00-proxy-admin-logging.conf")
+LOG_FORMAT = "log_format proxy_admin '$remote_addr [$time_iso8601] \\\"$request\\\" host=$host server=$server_name upstream=$upstream_addr status=$status bytes=$body_bytes_sent request_time=$request_time referer=\\\"$http_referer\\\" user_agent=\\\"$http_user_agent\\\"';\n"
 
 
 def reply(conn, ok, message):
@@ -35,6 +38,8 @@ def handle(request):
             temp_name = temp.name
         os.chmod(temp_name, 0o640)
         os.replace(temp_name, target)
+    LOG_DIR.mkdir(mode=0o750, parents=True, exist_ok=True)
+    LOG_FORMAT_CONFIG.write_text(LOG_FORMAT)
     test = subprocess.run(["/usr/sbin/nginx", "-t"], capture_output=True, text=True, timeout=15)
     if test.returncode != 0:
         if previous is None:

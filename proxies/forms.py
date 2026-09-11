@@ -38,10 +38,9 @@ def certificate_valid_until(uploaded):
 class ProxyConfigForm(forms.ModelForm):
     class Meta:
         model = ProxyConfig
-        fields = ["domain_name", "public_ip", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "enabled"]
+        fields = ["domain_name", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "enabled"]
         widgets = {
             "domain_name": forms.TextInput(attrs={"placeholder": "app.example.com"}),
-            "public_ip": forms.TextInput(attrs={"placeholder": "203.0.113.10"}),
             "backend_private_ip": forms.TextInput(attrs={"placeholder": "10.20.30.40"}),
             "backend_port": forms.NumberInput(attrs={"placeholder": "8080", "min": "1", "max": "65535"}),
             "incoming_protocol": forms.Select(attrs={"placeholder": "HTTPS"}),
@@ -64,11 +63,23 @@ class ProxyConfigForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("domain_name") and not cleaned.get("public_ip"):
-            cleaned["public_ip"] = resolve_public_ip(cleaned["domain_name"])
+        if cleaned.get("domain_name"):
+            public_ip = resolve_public_ip(cleaned["domain_name"])
+            if public_ip:
+                cleaned["public_ip"] = public_ip
+                self._resolved_public_ip = public_ip
+            else:
+                self.add_error("domain_name", "The FQDN does not resolve to a public IP address.")
         if cleaned.get("incoming_protocol") == "https" and not cleaned.get("certificate_bundle"):
             self.add_error("certificate_bundle", "HTTPS proxies require an active certificate bundle.")
         return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.public_ip = self._resolved_public_ip
+        if commit:
+            instance.save()
+        return instance
 
 
 class CertificateBundleForm(forms.ModelForm):

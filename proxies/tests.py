@@ -15,7 +15,8 @@ class ProxyValidationTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("domain_name", form.errors)
 
-    def test_fully_qualified_domain_is_accepted(self):
+    @patch("proxies.forms.resolve_public_ip", return_value="203.0.113.10")
+    def test_fully_qualified_domain_is_accepted(self, resolve_public_ip):
         form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
         self.assertTrue(form.is_valid(), form.errors)
 
@@ -27,11 +28,17 @@ class ProxyValidationTests(TestCase):
         resolve_public_ip.assert_called_once_with("app.example.com")
 
     @patch("proxies.forms.resolve_public_ip", return_value="203.0.113.10")
-    def test_manual_public_ip_is_preserved(self, resolve_public_ip):
-        form = ProxyConfigForm(data={"domain_name": "app.example.com", "public_ip": "198.51.100.20", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
+    def test_public_ip_is_always_resolved_from_domain(self, resolve_public_ip):
+        form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data["public_ip"], "198.51.100.20")
-        resolve_public_ip.assert_not_called()
+        self.assertEqual(form.cleaned_data["public_ip"], "203.0.113.10")
+        resolve_public_ip.assert_called_once_with("app.example.com")
+
+    @patch("proxies.forms.resolve_public_ip", return_value=None)
+    def test_public_ip_requires_fqdn_resolution(self, resolve_public_ip):
+        form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
+        self.assertFalse(form.is_valid())
+        self.assertIn("domain_name", form.errors)
 
     def test_https_requires_certificate(self):
         form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "https", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})

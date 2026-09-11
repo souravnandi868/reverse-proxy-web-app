@@ -16,9 +16,9 @@
     <nav>
       <a href="{% url 'dashboard' %}" class="nav-link {% if request.path == '/' %}active{% endif %}"><span>▦</span>Dashboard</a>
       <a href="{% url 'dashboard' %}#proxies" class="nav-link"><span>▤</span>Reverse Proxies</a>
-      <a href="{% url 'dashboard' %}#backends" class="nav-link"><span>◎</span>Domains &amp; IPs</a>
+      <a href="{% url 'dashboard' %}#domains" class="nav-link"><span>◎</span>Domains &amp; IPs</a>
       <a href="{% url 'certificates' %}" class="nav-link"><span>⬟</span>SSL Certificates</a>
-      <a href="{% url 'dashboard' %}#backends" class="nav-link"><span>▦</span>Backend Servers</a>
+      <a href="{% url 'dashboard' %}#servers" class="nav-link"><span>▦</span>Backend Servers</a>
       <a href="{% url 'audit' %}" class="nav-link"><span>▣</span>Activity Logs</a>
       <a href="/admin/" class="nav-link"><span>⚙</span>Settings</a>
     </nav>
