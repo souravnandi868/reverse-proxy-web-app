@@ -143,6 +143,19 @@ class MonitoringTests(TestCase):
         self.sample["interfaces"][0]["is_up"] = "false"
         self.assertEqual(self.send().status_code, 400)
 
+    def test_nginx_rates_are_validated_and_exposed_separately(self):
+        self.client.force_login(self.user)
+        for rx, tx in ((123.5, 456.5), (0, 0), (None, None)):
+            self.sample.update(nginx_rx_bps=rx, nginx_tx_bps=tx)
+            self.assertEqual(self.send().status_code, 200)
+            metrics = self.client.get("/servers/metrics/").json()["servers"][0]["metrics"]
+            self.assertEqual(metrics["nginx_rx_bps"], rx)
+            self.assertEqual(metrics["nginx_tx_bps"], tx)
+            self.assertEqual(metrics["interfaces"], self.sample["interfaces"])
+        for bad in (-1, True, "100", float("inf")):
+            self.sample.update(nginx_rx_bps=bad, nginx_tx_bps=0)
+            self.assertEqual(self.send().status_code, 400)
+
     def test_agent_reports_down_new_and_unknown_interfaces(self):
         spec = importlib.util.spec_from_file_location("monitor_agent", Path(__file__).resolve().parent.parent / "ops/monitor-agent.py")
         module = importlib.util.module_from_spec(spec)
@@ -160,3 +173,117 @@ class MonitoringTests(TestCase):
         self.assertEqual(result["eth1"]["speed_mbps"], 0)
         self.assertIsNone(result["tun0"]["is_up"])
         self.assertFalse(module.network_rates(current, current, 0, stats)[0]["rate_available"])
+
+
+class NginxTrafficTests(TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("monitor_agent", Path(__file__).resolve().parent.parent / "ops/monitor-agent.py")
+        self.agent = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"psutil": SimpleNamespace()}):
+            spec.loader.exec_module(self.agent)
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.directory = Path(self.temp.name)
+        self.now = 0
+
+    def reader(self):
+        reader = self.agent.NginxTraffic(self.directory, clock=lambda: self.now)
+        self.addCleanup(reader.close)
+        return reader
+
+    def append(self, name="one.access.log", rx=100, tx=200):
+        with (self.directory / name).open("ab") as handle:
+            handle.write(json.dumps({"received_bytes": rx, "sent_bytes": tx}).encode() + b"\n")
+
+    def sample(self, reader, rx, tx, seconds=5):
+        self.now += seconds
+        self.assertEqual(reader.sample(), {"nginx_rx_bps": rx / seconds, "nginx_tx_bps": tx / seconds})
+
+    def test_append_multiple_websites_and_restart_without_replay(self):
+        self.append(rx=9000)
+        reader = self.reader()
+        self.append()
+        self.append("two.access.log", 300, 400)
+        self.append("error.log", 999, 999)
+        self.sample(reader, 400, 600)
+        self.sample(reader, 0, 0)
+        reader.close()
+        restarted = self.reader()
+        self.sample(restarted, 0, 0)
+        self.append(rx=50, tx=60)
+        self.sample(restarted, 50, 60, seconds=10)
+
+    def test_truncation_and_regrowth_beyond_previous_offset(self):
+        self.append()
+        reader = self.reader()
+        (self.directory / "one.access.log").write_bytes(b"")
+        self.sample(reader, 0, 0)
+        self.append(rx=10, tx=20)
+        self.sample(reader, 10, 20)
+        (self.directory / "one.access.log").write_bytes(b"")
+        for _ in range(4):
+            self.append(rx=500, tx=600)
+        self.sample(reader, 2000, 2400)
+        self.sample(reader, 0, 0)
+
+    def test_rotation_drains_old_inode_and_reads_replacement(self):
+        self.append()
+        reader = self.reader()
+        self.append(rx=10, tx=20)
+        replacement = self.directory / "replacement"
+        replacement.mkdir()
+        new_log = replacement / "one.access.log"
+        new_log.write_text(json.dumps({"received_bytes": 30, "sent_bytes": 40}) + "\n")
+        # Simulate the active pathname pointing at a new inode, retaining the old handle.
+        # This also runs on Windows, which disallows renaming an open Python file.
+        with patch.object(Path, "iterdir", return_value=iter([new_log])):
+            self.sample(reader, 40, 60)
+        self.append(rx=50, tx=60)  # Late writes from a worker still using the old inode.
+        with patch.object(Path, "iterdir", return_value=iter([new_log])):
+            self.sample(reader, 50, 60)
+        with patch.object(Path, "iterdir", return_value=iter([new_log])):
+            self.sample(reader, 0, 0, seconds=61)
+        self.assertEqual(len(reader.files), 1)
+
+    def test_malformed_legacy_partial_and_oversized_lines(self):
+        reader = self.reader()
+        log = self.directory / "one.access.log"
+        log.write_bytes(b'bad json\n{}\n[]\n{"received_bytes":-1,"sent_bytes":5}\n'
+                        b'{"received_bytes":true,"sent_bytes":5}\n' + b'x' * (1024 * 1024 + 3) + b'\n'
+                        b'{"received_bytes":10,')
+        self.sample(reader, 0, 0)
+        with log.open("ab") as handle:
+            handle.write(b'"sent_bytes":20}\n')
+        self.sample(reader, 10, 20)
+        self.append()
+        self.sample(reader, 100, 200)
+
+    def test_restart_in_middle_of_line_skips_existing_request(self):
+        log = self.directory / "one.access.log"
+        log.write_bytes(b'{"received_bytes":100,')
+        reader = self.reader()
+        with log.open("ab") as handle:
+            handle.write(b'"sent_bytes":200}\n')
+        self.append(rx=10, tx=20)
+        self.sample(reader, 10, 20)
+
+    def test_permission_error_is_unavailable_and_recovers(self):
+        reader = self.reader()
+        self.now += 5
+        with patch.object(Path, "iterdir", side_effect=PermissionError()):
+            self.assertEqual(reader.sample(), {"nginx_rx_bps": None, "nginx_tx_bps": None})
+        self.sample(reader, 0, 0)
+
+    def test_failed_initial_discovery_does_not_replay_backlog(self):
+        self.append(rx=100000, tx=200000)
+        with patch.object(Path, "iterdir", side_effect=PermissionError()):
+            reader = self.reader()
+        self.sample(reader, 0, 0)
+        self.append(rx=10, tx=20)
+        self.sample(reader, 10, 20)
+
+    def test_logging_format_records_full_request_and_response_bytes(self):
+        config = (Path(__file__).resolve().parent.parent / "deploy/00-proxy-admin-logging.conf").read_text()
+        self.assertIn('"received_bytes":$request_length', config)
+        self.assertIn('"sent_bytes":$bytes_sent', config)
+        self.assertIn('"bytes":$body_bytes_sent', config)  # Preserve the audit viewer field.

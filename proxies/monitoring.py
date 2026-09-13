@@ -51,11 +51,15 @@ def validate_metrics(data):
     disks, interfaces = data["disks"], data["interfaces"]
     if not isinstance(disks, list) or not isinstance(interfaces, list) or len(disks) > 128 or len(interfaces) > 128:
         raise ValueError("Invalid device list")
-    return {
+    result = {
         "cpu": number(data["cpu"], 100), "ram": capacity(data["ram"]),
         "disks": [storage(d) for d in disks],
         "interfaces": [interface(n) for n in interfaces],
     }
+    if "nginx_rx_bps" in data or "nginx_tx_bps" in data:
+        for key in ("nginx_rx_bps", "nginx_tx_bps"):
+            result[key] = None if data[key] is None else number(data[key])
+    return result
 
 
 @csrf_exempt

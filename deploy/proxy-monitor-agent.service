@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 DynamicUser=true
+SupplementaryGroups=nginx
 EnvironmentFile=/etc/proxy-monitor-agent.env
 ExecStart=/opt/proxy-monitor/.venv/bin/python /opt/proxy-monitor/monitor-agent.py
 Restart=on-failure
