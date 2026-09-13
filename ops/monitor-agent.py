@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import stat
 import time
 import urllib.request
 from urllib.error import HTTPError
@@ -13,27 +14,48 @@ def network_rates(previous, current, elapsed, stats):
     interfaces = []
     for name, counters in current.items():
         link = stats.get(name)
-        if name not in previous or not link or not link.isup or name.lower() in {"lo", "lo0", "loopback pseudo-interface 1"}:
+        if name.lower() in {"lo", "lo0", "loopback pseudo-interface 1"}:
             continue
-        before = previous[name]
+        before = previous.get(name)
+        available = before is not None and elapsed > 0
         interfaces.append({"name": name,
-                           "rx": max(0, counters.bytes_recv - before.bytes_recv) / elapsed,
-                           "tx": max(0, counters.bytes_sent - before.bytes_sent) / elapsed,
-                           "speed_mbps": max(0, link.speed)})
+                           "rx": max(0, counters.bytes_recv - before.bytes_recv) / elapsed if available else 0,
+                           "tx": max(0, counters.bytes_sent - before.bytes_sent) / elapsed if available else 0,
+                           "speed_mbps": max(0, link.speed) if link else 0,
+                           "is_up": link.isup if link else None,
+                           "rate_available": available})
     return interfaces[:128]
 
 
-def nginx_storage():
-    # disk_usage accepts a directory even when it is not a separate mount.
-    path = "/var/log/nginx/"
+def nginx_storage(path="/var/log/nginx/"):
+    # Sum regular file lengths recursively; never follow links outside the tree.
+    total = 0
+    seen = set()
+    pending = [path]
     try:
-        usage = psutil.disk_usage(path)
+        if not stat.S_ISDIR(os.stat(path.rstrip("/"), follow_symlinks=False).st_mode):
+            return []
+        while pending:
+            with os.scandir(pending.pop()) as entries:
+                for entry in entries:
+                    try:
+                        info = entry.stat(follow_symlinks=False)
+                        if os.name == "nt":
+                            # Windows DirEntry stat may omit file identity.
+                            info = os.stat(entry.path, follow_symlinks=False)
+                    except FileNotFoundError:
+                        continue  # A log may disappear during rotation.
+                    if stat.S_ISDIR(info.st_mode):
+                        pending.append(entry.path)
+                    elif stat.S_ISREG(info.st_mode):
+                        identity = (info.st_dev, info.st_ino)
+                        if identity not in seen:
+                            seen.add(identity)
+                            total += info.st_size
     except OSError:
+        # Do not publish a misleading partial total when traversal fails.
         return []
-    if not usage.total:
-        return []
-    return [{"mount": path, "used": usage.used, "total": usage.total,
-             "free": usage.free, "percent": usage.percent}]
+    return [{"mount": path, "kind": "directory", "used": total}]
 
 
 def collect(previous, elapsed):

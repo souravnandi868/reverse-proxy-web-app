@@ -1,6 +1,8 @@
 import hashlib
 import importlib.util
 import json
+import os
+import tempfile
 import sys
 from io import StringIO
 from datetime import timedelta
@@ -103,14 +105,58 @@ class MonitoringTests(TestCase):
         self.assertEqual(result[0]["rx"], 200)
         self.assertEqual(result[0]["tx"], 0)
 
-    def test_agent_reads_only_nginx_log_filesystem(self):
+    def test_agent_measures_only_directory_files(self):
         spec = importlib.util.spec_from_file_location("monitor_agent", Path(__file__).resolve().parent.parent / "ops/monitor-agent.py")
         module = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"psutil": SimpleNamespace()}):
             spec.loader.exec_module(module)
-        with patch.object(module.psutil, "disk_usage", create=True) as usage:
-            usage.return_value = SimpleNamespace(used=10, total=100, free=85, percent=10)
-            self.assertEqual(module.nginx_storage(), self.sample["disks"])
-            usage.assert_called_once_with("/var/log/nginx/")
-            usage.side_effect = PermissionError()
-            self.assertEqual(module.nginx_storage(), [])
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / "nginx"
+            root.mkdir()
+            expected = {"mount": str(root), "kind": "directory", "used": 0}
+            self.assertEqual(module.nginx_storage(str(root)), [expected])
+            (Path(folder) / "unrelated").write_bytes(b"x" * 1000)
+            (root / "access.log").write_bytes(b"a" * 10)
+            (root / "rotated").mkdir()
+            (root / "rotated" / "access.log.1").write_bytes(b"b" * 25)
+            os.link(root / "access.log", root / "access-hardlink.log")
+            expected["used"] = 35
+            self.assertEqual(module.nginx_storage(str(root)), [expected])
+            with patch.object(module.os, "scandir", side_effect=PermissionError()):
+                self.assertEqual(module.nginx_storage(str(root)), [])
+            self.assertEqual(module.nginx_storage(str(root / "missing")), [])
+
+    def test_directory_size_ingestion_including_empty_directory(self):
+        for size in (0, 12345):
+            self.sample["disks"] = [{"mount": "/var/log/nginx/", "kind": "directory", "used": size}]
+            self.assertEqual(self.send().status_code, 200)
+            self.monitor.refresh_from_db()
+            self.assertEqual(self.monitor.latest, self.sample)
+        self.sample["disks"][0]["used"] = -1
+        self.assertEqual(self.send().status_code, 400)
+
+    def test_interface_states_survive_ingestion(self):
+        self.sample["interfaces"][0].update(is_up=False, rate_available=True)
+        self.assertEqual(self.send().status_code, 200)
+        self.monitor.refresh_from_db()
+        self.assertEqual(self.monitor.latest, self.sample)
+        self.sample["interfaces"][0]["is_up"] = "false"
+        self.assertEqual(self.send().status_code, 400)
+
+    def test_agent_reports_down_new_and_unknown_interfaces(self):
+        spec = importlib.util.spec_from_file_location("monitor_agent", Path(__file__).resolve().parent.parent / "ops/monitor-agent.py")
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"psutil": SimpleNamespace()}):
+            spec.loader.exec_module(module)
+        counter = SimpleNamespace(bytes_recv=100, bytes_sent=200)
+        current = {name: counter for name in ("eth0", "eth1", "tun0", "lo")}
+        stats = {"eth0": SimpleNamespace(isup=False, speed=1000),
+                 "eth1": SimpleNamespace(isup=True, speed=-1)}
+        result = {n["name"]: n for n in module.network_rates({"eth0": counter}, current, 5, stats)}
+        self.assertEqual(set(result), {"eth0", "eth1", "tun0"})
+        self.assertFalse(result["eth0"]["is_up"])
+        self.assertTrue(result["eth0"]["rate_available"])
+        self.assertFalse(result["eth1"]["rate_available"])
+        self.assertEqual(result["eth1"]["speed_mbps"], 0)
+        self.assertIsNone(result["tun0"]["is_up"])
+        self.assertFalse(module.network_rates(current, current, 0, stats)[0]["rate_available"])

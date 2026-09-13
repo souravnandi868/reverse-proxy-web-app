@@ -63,8 +63,8 @@
       }
       card.append(el('p', `Last received: ${new Date(server.received_at).toLocaleString()}`, 'server-subtitle'));
       let h = history.get(server.address) || {time: null, samples: []};
-      const nginxDisks = m.disks.filter(d => d.mount.replace(/\/+$/, '') === '/var/log/nginx');
-      const disk = nginxDisks.length ? nginxDisks[0].percent : 0;
+      const nginxDisks = m.disks.filter(d => d.kind === 'directory' && d.mount.replace(/\/+$/, '') === '/var/log/nginx');
+      const disk = nginxDisks.length ? nginxDisks[0].used : null;
       const rx = m.interfaces.reduce((sum, n) => sum + n.rx, 0);
       const tx = m.interfaces.reduce((sum, n) => sum + n.tx, 0);
       if (server.status === 'live' && h.time !== server.received_at) {
@@ -73,27 +73,30 @@
         h.samples = h.samples.slice(-60); h.time = server.received_at;
       }
       history.set(server.address, h);
-      const values = key => h.samples.map(s => s[key]);
+      const values = key => h.samples.map(s => s[key]).filter(v => v !== null);
       const grid = el('div', undefined, 'resource-grid');
       grid.append(resource('CPU', `${m.cpu.toFixed(1)}%`, 'Total processor utilization', [values('cpu')], ['#0875df'], m.cpu));
       grid.append(resource('RAM', `${m.ram.percent.toFixed(1)}%`, `${bytes(m.ram.used)} / ${bytes(m.ram.total)}`, [values('ram')], ['#15986a'], m.ram.percent));
-      grid.append(resource('NGINX log storage', nginxDisks.length ? `${disk.toFixed(1)}%` : 'Unavailable', 'Filesystem containing /var/log/nginx/', [values('disk')], ['#d68b00'], disk));
-      grid.append(resource('Network', `${bytes(rx)}/s`, `Receive (blue) · Send (purple): ${bytes(tx)}/s; auto-scaled graph`, [values('rx'), values('tx')], ['#0875df', '#8b5cf6']));
+      grid.append(resource('NGINX log storage', nginxDisks.length ? bytes(disk) : 'Unavailable', 'File size inside /var/log/nginx/', [values('disk')], ['#d68b00']));
+      grid.append(resource('Network (sum of interfaces)', `${bytes(rx)}/s`, `Receive (blue) · Send (purple): ${bytes(tx)}/s; auto-scaled graph`, [values('rx'), values('tx')], ['#0875df', '#8b5cf6']));
       card.append(grid);
       const devices = el('div', undefined, 'server-devices');
       const disks = el('div'); disks.append(el('h3', 'NGINX log storage'));
       nginxDisks.forEach(d => {
         const row = el('div', undefined, 'device-row');
-        row.append(el('span', d.mount), el('span', `${bytes(d.used)} used / ${bytes(d.total)} total ? ${bytes(d.free ?? (d.total - d.used))} available (${d.percent.toFixed(1)}% used)`)); disks.append(row);
+        row.append(el('span', d.mount), el('span', `${bytes(d.used)} of log files`)); disks.append(row);
       });
       if (!nginxDisks.length) disks.append(el('p', 'Storage data unavailable. Update the agent and check access to /var/log/nginx/.', 'server-subtitle'));
-      disks.append(el('p', 'Space on the filesystem containing this directory, including other files on that filesystem.', 'server-subtitle'));
+      disks.append(el('p', 'Total file size including subdirectories and rotated logs. Symbolic links are excluded; hard-linked files are counted once.', 'server-subtitle'));
       const network = el('div'); network.append(el('h3', 'Network by interface'));
       m.interfaces.forEach(n => {
         const utilization = n.speed_mbps > 0 ? `${(Math.max(n.rx, n.tx) * 8 / (n.speed_mbps * 1e6) * 100).toFixed(1)}% of ${n.speed_mbps} Mbps link` : 'Link capacity unknown';
         const row = el('div', undefined, 'device-row');
-        row.append(el('span', n.name), el('span', `RX ${bytes(n.rx)}/s · TX ${bytes(n.tx)}/s · ${utilization}`)); network.append(row);
+        const state = n.is_up === true ? 'Up' : n.is_up === false ? 'Down' : 'Link state unknown';
+        row.append(el('span', `${n.name} ? ${state}`), el('span', n.rate_available === false ? 'Waiting for rate sample' : `RX ${bytes(n.rx)}/s · TX ${bytes(n.tx)}/s · ${utilization}`)); network.append(row);
       });
+      if (!m.interfaces.length) network.append(el('p', 'No non-loopback interface measurements reported.', 'server-subtitle'));
+      network.append(el('p', 'Rates are bytes per second, averaged over the agent sample interval. The sum can count traffic more than once across bridges and virtual interfaces. Link speed is reported by the operating system.', 'server-subtitle'));
       devices.append(disks, network); card.append(devices);
     });
   }

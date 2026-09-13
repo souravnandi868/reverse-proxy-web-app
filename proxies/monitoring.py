@@ -32,15 +32,29 @@ def validate_metrics(data):
             raise ValueError("Invalid capacity")
         return result
 
+    def interface(value):
+        result = {"name": label(value["name"]), "rx": number(value["rx"]),
+                  "tx": number(value["tx"]), "speed_mbps": number(value["speed_mbps"], 1e9)}
+        for key in ("is_up", "rate_available"):
+            if key in value:
+                if type(value[key]) is not bool and not (key == "is_up" and value[key] is None):
+                    raise ValueError("Invalid interface state")
+                result[key] = value[key]
+        return result
+
+    def storage(value):
+        if value.get("kind") == "directory":
+            return {"mount": label(value["mount"]), "kind": "directory", "used": number(value["used"])}
+        return dict(capacity(value), mount=label(value["mount"]),
+                    free=number(value.get("free", value["total"] - value["used"]), value["total"]))
+
     disks, interfaces = data["disks"], data["interfaces"]
     if not isinstance(disks, list) or not isinstance(interfaces, list) or len(disks) > 128 or len(interfaces) > 128:
         raise ValueError("Invalid device list")
     return {
         "cpu": number(data["cpu"], 100), "ram": capacity(data["ram"]),
-        "disks": [dict(capacity(d), mount=label(d["mount"]),
-                       free=number(d.get("free", d["total"] - d["used"]), d["total"])) for d in disks],
-        "interfaces": [{"name": label(n["name"]), "rx": number(n["rx"]), "tx": number(n["tx"]),
-                        "speed_mbps": number(n["speed_mbps"], 1e9)} for n in interfaces],
+        "disks": [storage(d) for d in disks],
+        "interfaces": [interface(n) for n in interfaces],
     }
 
 
