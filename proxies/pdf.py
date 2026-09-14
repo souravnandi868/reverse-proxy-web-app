@@ -3,6 +3,7 @@
 from io import BytesIO
 from xml.sax.saxutils import escape
 
+from django.conf import settings
 from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -12,9 +13,11 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 def build_proxy_pdf(proxies):
     output = BytesIO()
+    title = "Kolkatapolice hosted Application Details"
+    watermark = str(settings.BASE_DIR / "static" / "images" / "kolkata-police-logo.png")
     document = SimpleDocTemplate(
         output, pagesize=landscape(A4), rightMargin=42, leftMargin=42,
-        topMargin=42, bottomMargin=42, title="Reverse proxy entries",
+        topMargin=42, bottomMargin=42, title=title,
     )
     styles = getSampleStyleSheet()
 
@@ -49,11 +52,19 @@ def build_proxy_pdf(proxies):
         ("TOPPADDING", (0, 0), (-1, -1), 7),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
-    story = [paragraph("Reverse proxy entries", "Title"),
+    story = [paragraph(title, "Title"),
              paragraph(f"Exported {timestamp(timezone.now())} | Total entries: {count}", "Normal"), Spacer(1, 18)]
     story.append(table if count else paragraph("No proxy configurations yet."))
 
     def footer(canvas, doc):
+        # Draw before the page content so the emblem sits behind the table.
+        width, height = landscape(A4)
+        canvas.saveState()
+        canvas.setFillAlpha(0.08)
+        canvas.drawImage(watermark, (width - 330) / 2, (height - 330) / 2,
+                         width=330, height=330, preserveAspectRatio=True,
+                         anchor="c", mask="auto")
+        canvas.restoreState()
         canvas.saveState()
         canvas.setFont("Helvetica", 9)
         canvas.drawRightString(landscape(A4)[0] - 42, 24, f"Page {doc.page}")
