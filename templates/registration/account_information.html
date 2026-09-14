@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Account information | Proxy Control{% endblock %}
+{% block heading %}Account information{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <dl class="account-info">
+    <dt>Username</dt><dd>{{ request.user.get_username }}</dd>
+    <dt>Name</dt><dd>{{ request.user.get_full_name|default:'Not set' }}</dd>
+    <dt>Email ID</dt><dd>{{ request.user.email|default:'Not set' }}</dd>
+    <dt>Mobile number</dt><dd>{{ profile.mobile_number|default:'Not set' }}</dd>
+    <dt>Account role</dt><dd>{% if request.user.is_superuser %}Administrator{% elif request.user.is_staff %}Staff{% else %}User{% endif %}</dd>
+    <dt>Joined</dt><dd>{{ request.user.date_joined|date:'M j, Y' }}</dd>
+  </dl>
+  <a class="button primary" href="{% url 'account_contact' %}">Edit contact information</a>
+  <a class="button" href="{% url 'account_password' %}">Change password</a>
+</section>
+{% endblock %}

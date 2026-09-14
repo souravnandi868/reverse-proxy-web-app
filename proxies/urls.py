@@ -1,8 +1,11 @@
 from django.urls import path
 from . import views
-from . import monitoring
+from . import monitoring, account
 
 urlpatterns = [
+    path("account/", account.information, name="account_information"),
+    path("account/contact/", account.contact, name="account_contact"),
+    path("account/password/", account.password, name="account_password"),
     path("", views.dashboard, name="dashboard"),
     path("proxies/", views.proxy_list, name="proxy_list"),
     path("domains/", views.domains, name="domains"),

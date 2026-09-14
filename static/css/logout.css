@@ -1,1 +1,11 @@
-.user-menu form{display:block}.user-menu form .text-button{display:inline-block;color:#0875df;background:#edf5ff;border:1px solid #cfe3fb;border-radius:5px;padding:6px 9px;font:600 10px Manrope;cursor:pointer}.user-menu form .text-button:hover,.user-menu form .text-button:focus{background:#dcecff;color:#075bb2}
+.account-dropdown{position:relative}.account-dropdown summary{cursor:pointer;list-style:none;border:2px solid transparent}.account-dropdown summary::-webkit-details-marker{display:none}.account-dropdown summary:focus-visible{outline:3px solid #0875df;outline-offset:3px}.account-options{position:absolute;right:0;top:44px;z-index:100;width:250px;padding:10px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 10px 30px #09264a26}.account-options>strong{display:block;padding:10px;color:#15345f;font-size:13px}.user-menu .account-options a,.account-options button{display:block;width:100%;padding:11px 10px;text-align:left;font:500 13px Manrope,sans-serif;color:#15345f;background:transparent;border:0;border-radius:5px;cursor:pointer}.account-options a:hover,.account-options button:hover,.account-options a:focus-visible,.account-options button:focus-visible{background:#edf5ff}.account-options form{border-top:1px solid #e2e8f0;margin-top:5px;padding-top:5px}.account-options button{color:#b91c1c}.account-info{display:grid;grid-template-columns:140px 1fr;gap:14px;margin:0 0 24px}.account-info dt{font-weight:700}.account-info dd{margin:0;overflow-wrap:anywhere}
+@media(max-width:850px){
+  .topbar{flex-wrap:wrap;gap:12px}
+  .topbar .topbar-tools{display:flex;width:100%;justify-content:space-between}
+  .topbar-tools>.search{display:flex;flex:1;max-width:335px;min-width:0}
+  .topbar-tools>.bell,.topbar .user-menu>span{display:none}
+  .topbar .user-menu{flex:none}
+  .account-options{max-width:calc(100vw - 36px)}
+  .account-info{grid-template-columns:1fr;gap:8px}
+  .account-info dd{margin-bottom:10px}
+}

@@ -76,3 +76,8 @@ class ServerMonitor(models.Model):
     token_hash = models.CharField(max_length=64)
     latest = models.JSONField(default=dict)
     received_at = models.DateTimeField(null=True, blank=True)
+
+
+class AccountProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="account_profile")
+    mobile_number = models.CharField(max_length=25, blank=True)

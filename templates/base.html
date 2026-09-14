@@ -7,8 +7,8 @@
   <title>{% block title %}Proxy Control{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <link rel="stylesheet" href="{% static 'css/console.css' %}">
-  <link rel="stylesheet" href="{% static 'css/logout.css' %}">
   {% block extra_css %}{% endblock %}
+  <link rel="stylesheet" href="{% static 'css/logout.css' %}">
 </head>
 <body>
   <aside class="sidebar">
@@ -25,7 +25,8 @@
     <div class="sidebar-foot"><strong>Kolkata Police</strong><span>IT Infrastructure</span><small>Secure Systems<br>Safer Citizens</small></div>
   </aside>
   <main class="main">
-    <header class="topbar"><div><h1>{% block heading %}Kolkatapolice Reverse Proxy Dashboard{% endblock %}</h1><p>Monitor and manage your Nginx reverse proxies, domains, certificates and backend services.</p></div><div class="topbar-tools"><label class="search"><span>⌕</span><input type="search" placeholder="Search domains, IPs, or servers..." aria-label="Search"></label><span class="bell">●</span><div class="user-menu"><span class="avatar">{{ request.user.get_username|slice:':1'|upper }}</span><span><b>{{ request.user.get_username|title }}</b><small>Network Administrator</small></span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Sign out</button></form></div></div></header>
+    <header class="topbar"><div><h1>{% block heading %}Kolkatapolice Reverse Proxy Dashboard{% endblock %}</h1><p>Monitor and manage your Nginx reverse proxies, domains, certificates and backend services.</p></div><div class="topbar-tools"><label class="search"><span>⌕</span><input type="search" id="page-search" placeholder="Search this page..." aria-label="Search this page" aria-describedby="search-status"></label><span class="bell">●</span><div class="user-menu"><details class="account-dropdown"><summary class="avatar" aria-label="Open account menu" title="Account menu">{{ request.user.get_username|slice:':1'|upper }}</summary><div class="account-options"><strong>{{ request.user.get_username }}</strong><a href="{% url 'account_information' %}">Account information</a><a href="{% url 'account_password' %}">Change password</a><a href="{% url 'account_contact' %}#id_mobile_number">Add or change mobile number</a><a href="{% url 'account_contact' %}#id_email">Add or change email ID</a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Logout</button></form></div></details><span><b>{{ request.user.get_username|title }}</b><small>{% if request.user.is_superuser %}Administrator{% else %}Account{% endif %}</small></span></div></div></header>
+    <p id="search-status" class="search-status" role="status" aria-live="polite" hidden></p>
     {% if messages %}<div class="messages">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
     {% block content %}{% endblock %}
   </main>
@@ -33,6 +34,8 @@
 <script src="{% static 'js/servers.js' %}" defer></script>
 <script src="{% static 'js/traffic.js' %}" defer></script>
 <script src="{% static 'js/live-pages.js' %}" defer></script>
+<script src="{% static 'js/search.js' %}" defer></script>
+<script src="{% static 'js/account.js' %}" defer></script>
 <script src="{% static 'js/navigation.js' %}" defer></script>
 
 </body>

@@ -4,7 +4,7 @@
   let controller;
   let posting = false;
   let pendingHistory = null;
-  const appPath = path => path === '/' || /^\/(proxies|domains|servers|certificates|audit|login|logout)\//.test(path);
+  const appPath = path => path === '/' || /^\/(proxies|domains|servers|certificates|audit|account|login|logout)\//.test(path);
 
   function notice(message, error = false) {
     let node = document.getElementById('navigation-status');
