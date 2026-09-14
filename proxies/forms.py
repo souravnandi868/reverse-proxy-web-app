@@ -88,18 +88,12 @@ class ProxyConfigForm(forms.ModelForm):
 class CertificateBundleForm(forms.ModelForm):
     class Meta:
         model = CertificateBundle
-        fields = ["name", "certificate", "private_key", "valid_until"]
+        fields = ["name", "certificate", "private_key"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "wildcard-example-com"}),
             "certificate": forms.ClearableFileInput(attrs={"accept": ".pem,.crt,.cer"}),
             "private_key": forms.ClearableFileInput(attrs={"accept": ".pem,.key"}),
-            "valid_until": forms.DateInput(attrs={"type": "date"}),
         }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["valid_until"].required = False
-        self.fields["valid_until"].help_text = "Read automatically from the uploaded certificate."
 
     def _validate_pem(self, uploaded, marker):
         if uploaded.size > 1024 * 1024:
@@ -123,6 +117,7 @@ class CertificateBundleForm(forms.ModelForm):
         cleaned = super().clean()
         if hasattr(self, "_certificate_valid_until"):
             cleaned["valid_until"] = self._certificate_valid_until
+            self.instance.valid_until = self._certificate_valid_until
         return cleaned
 
     def clean_private_key(self):

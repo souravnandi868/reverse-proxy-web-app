@@ -129,6 +129,8 @@ class ProxyValidationTests(TestCase):
         })
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data["valid_until"], date(2030, 12, 31))
+        self.assertNotIn("valid_until", form.fields)
+        self.assertEqual(form.save(commit=False).valid_until, date(2030, 12, 31))
         certificate_valid_until.assert_called_once()
 
     def test_rendered_config_uses_fixed_directive_shape(self):
