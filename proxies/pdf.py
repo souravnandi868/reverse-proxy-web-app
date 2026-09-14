@@ -6,7 +6,7 @@ from xml.sax.saxutils import escape
 from django.conf import settings
 from django.utils import timezone
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
@@ -16,10 +16,12 @@ def build_proxy_pdf(proxies):
     title = "Kolkatapolice hosted Application Details"
     watermark = str(settings.BASE_DIR / "static" / "images" / "kolkata-police-logo.png")
     document = SimpleDocTemplate(
-        output, pagesize=landscape(A4), rightMargin=42, leftMargin=42,
+        output, pagesize=A4, rightMargin=42, leftMargin=42,
         topMargin=42, bottomMargin=42, title=title,
     )
     styles = getSampleStyleSheet()
+    styles["BodyText"].fontSize = 9
+    styles["BodyText"].leading = 12
 
     def paragraph(value, style="BodyText"):
         return Paragraph(escape(str(value)).replace("\n", "<br/>"), styles[style])
@@ -47,8 +49,8 @@ def build_proxy_pdf(proxies):
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f6")),
         ("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#dce2e8")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         ("TOPPADDING", (0, 0), (-1, -1), 7),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
@@ -58,7 +60,7 @@ def build_proxy_pdf(proxies):
 
     def footer(canvas, doc):
         # Draw before the page content so the emblem sits behind the table.
-        width, height = landscape(A4)
+        width, height = A4
         canvas.saveState()
         canvas.setFillAlpha(0.22)
         canvas.drawImage(watermark, (width - 330) / 2, (height - 330) / 2,
@@ -67,7 +69,7 @@ def build_proxy_pdf(proxies):
         canvas.restoreState()
         canvas.saveState()
         canvas.setFont("Helvetica", 9)
-        canvas.drawRightString(landscape(A4)[0] - 42, 24, f"Page {doc.page}")
+        canvas.drawRightString(A4[0] - 42, 24, f"Page {doc.page}")
         canvas.restoreState()
 
     document.build(story, onFirstPage=footer, onLaterPages=footer)
