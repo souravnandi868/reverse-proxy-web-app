@@ -60,7 +60,7 @@ def build_proxy_pdf(proxies):
         # Draw before the page content so the emblem sits behind the table.
         width, height = landscape(A4)
         canvas.saveState()
-        canvas.setFillAlpha(0.08)
+        canvas.setFillAlpha(0.22)
         canvas.drawImage(watermark, (width - 330) / 2, (height - 330) / 2,
                          width=330, height=330, preserveAspectRatio=True,
                          anchor="c", mask="auto")
