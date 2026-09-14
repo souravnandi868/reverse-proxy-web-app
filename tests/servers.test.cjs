@@ -20,8 +20,8 @@ async function render(rates) {
     interfaces: [{name: 'eth0', rx: 999999999, tx: 888888888, speed_mbps: 1000}], ...rates,
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/js/servers.js'), 'utf8'), {
-    document: {getElementById: id => nodes[id], createElement: () => new Element(), createElementNS: () => new Element()},
-    window: {setTimeout() {}}, AbortSignal,
+    document: {addEventListener() {}, getElementById: id => nodes[id], createElement: () => new Element(), createElementNS: () => new Element()},
+    window: {setTimeout() {}}, AbortSignal, AbortController, clearTimeout, clearInterval,
     fetch: async () => ({ok: true, headers: {get: () => 'application/json'}, json: async () => ({servers: [
       {address: '10.0.0.4', name: 'NGINX', status: 'live', received_at: '2026-09-13T12:00:00Z', metrics},
     ]})}),

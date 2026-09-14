@@ -137,3 +137,10 @@ Deletion passes a temporarily disabled in-memory proxy to the restricted Unix-so
 After acknowledgement, a short database transaction checks for intervening proxy changes and deletes the proxy together with an independent audit event containing only domain, public IP, backend IP/port, incoming/backend protocols, and the original enabled flag. ConfigurationBackup records cascade with their proxy; the audit event survives. No database transaction is held while waiting for Nginx, including when ATOMIC_REQUESTS is enabled.
 
 Nginx and the database cannot participate in a single atomic transaction. A lost acknowledgement, worker exit, concurrent edit, or database/audit failure after helper success can leave the route removed while the database record remains. The original saved enabled state is preserved; review and reapply the retained proxy or retry deletion to reconcile it. A reload timeout also leaves runtime state uncertain even when the previous managed file is restored. If filesystem restoration fails, operator recovery is required. The updated helper must accompany the application change to provide file restoration on reload failures; the socket request/response format is unchanged.
+
+
+## Dynamic application views
+
+The main application intercepts navigation and form submissions, rendering Django responses in place without reloading the browser document. Validation, CSRF protection, certificate deletion confirmation, browser Back/Forward, and PDF downloads are preserved. Lists and metrics receive background updates every five seconds; navigation stops the previous view's polling. Edit and upload fields are not replaced by background updates. Django admin and external links use normal navigation.
+
+The optional browser regression test uses an isolated Django test database, mocks DNS and NGINX operations, and requires Google Chrome and Playwright (`python -m pip install playwright`). Run `python manage.py test tests.browser_navigation`. Runtime deployments do not need Playwright.

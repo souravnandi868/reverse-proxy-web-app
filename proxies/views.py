@@ -30,6 +30,7 @@ def log_action(request, action, target, detail=None):
 
 
 @staff_required
+@never_cache
 def dashboard(request):
     from .monitoring import snapshots
     proxies = ProxyConfig.objects.select_related("certificate_bundle").all()
@@ -47,6 +48,7 @@ def dashboard(request):
 
 
 @staff_required
+@never_cache
 def proxy_list(request):
     return render(request, "proxies/proxy_list.html", {
         "proxies": ProxyConfig.objects.select_related("certificate_bundle").all(),
@@ -54,6 +56,7 @@ def proxy_list(request):
 
 
 @staff_required
+@never_cache
 def domains(request):
     return render(request, "proxies/domains.html", {"proxies": ProxyConfig.objects.all()})
 
@@ -61,14 +64,12 @@ def domains(request):
 @staff_required
 @require_GET
 @never_cache
-def proxy_export_pdf(request, pk):
+def proxy_export_pdf(request):
     from .pdf import build_proxy_pdf
-    from django.utils.text import slugify
 
-    proxy = get_object_or_404(ProxyConfig.objects.select_related("certificate_bundle"), pk=pk)
-    response = HttpResponse(build_proxy_pdf(proxy), content_type="application/pdf")
-    filename = slugify(proxy.domain_name) or str(proxy.pk)
-    response["Content-Disposition"] = f'attachment; filename="reverse-proxy-{filename}.pdf"'
+    proxies = ProxyConfig.objects.select_related("certificate_bundle").all()
+    response = HttpResponse(build_proxy_pdf(proxies), content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="reverse-proxies.pdf"'
     return response
 
 
@@ -202,6 +203,7 @@ def proxy_rollback(request, pk, backup_id):
 
 
 @staff_required
+@never_cache
 def certificates(request):
     form = CertificateBundleForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and form.is_valid():

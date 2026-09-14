@@ -29,5 +29,11 @@
     {% if messages %}<div class="messages">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
     {% block content %}{% endblock %}
   </main>
+  <script src="{% static 'js/certificates.js' %}" defer></script>
+<script src="{% static 'js/servers.js' %}" defer></script>
+<script src="{% static 'js/traffic.js' %}" defer></script>
+<script src="{% static 'js/live-pages.js' %}" defer></script>
+<script src="{% static 'js/navigation.js' %}" defer></script>
+
 </body>
 </html>
