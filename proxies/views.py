@@ -2,7 +2,7 @@ from functools import wraps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.template.loader import render_to_string
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -56,6 +56,20 @@ def proxy_list(request):
 @staff_required
 def domains(request):
     return render(request, "proxies/domains.html", {"proxies": ProxyConfig.objects.all()})
+
+
+@staff_required
+@require_GET
+@never_cache
+def proxy_export_pdf(request, pk):
+    from .pdf import build_proxy_pdf
+    from django.utils.text import slugify
+
+    proxy = get_object_or_404(ProxyConfig.objects.select_related("certificate_bundle"), pk=pk)
+    response = HttpResponse(build_proxy_pdf(proxy), content_type="application/pdf")
+    filename = slugify(proxy.domain_name) or str(proxy.pk)
+    response["Content-Disposition"] = f'attachment; filename="reverse-proxy-{filename}.pdf"'
+    return response
 
 
 @staff_required
