@@ -1,1 +1,26 @@
-{% extends 'base.html' %}{% load static %}{% block title %}Incoming traffic | Proxy Control{% endblock %}{% block heading %}Incoming traffic{% endblock %}{% block content %}<p id="traffic-refresh-status" role="status">Auto-refresh every 5 seconds</p><section class="table-wrap"><table><thead><tr><th>Time</th><th>Incoming IP</th><th>Destination FQDN</th><th>Destination server</th><th>Request</th><th>Status</th><th>Details</th></tr></thead><tbody id="traffic-rows" data-url="{% url 'traffic_rows' %}">{% include 'proxies/traffic_rows.html' %}</tbody></table></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Incoming traffic | Proxy Control{% endblock %}
+{% block heading %}Incoming traffic{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="section-head">
+    <form method="get" action="{% url 'audit' %}" class="traffic-filter">
+      <label for="traffic-fqdn">Destination FQDN</label>
+      <input id="traffic-fqdn" type="search" name="fqdn" list="traffic-domains" value="{{ selected_fqdn }}" placeholder="All traffic" autocomplete="off">
+      <datalist id="traffic-domains">{% for domain in traffic_domains %}<option value="{{ domain }}">{% endfor %}</datalist>
+      <button class="button primary" type="submit">Filter</button>
+      <a class="button" href="{% url 'audit' %}">Show all</a>
+    </form>
+    <div class="traffic-exports">
+      <a class="button" download href="{% url 'traffic_export' %}?fqdn={{ selected_fqdn|urlencode }}">Export current view to Excel</a>
+      <a class="button" download href="{% url 'traffic_export' %}">Export all to Excel</a>
+    </div>
+  </div>
+  <p class="muted">{% if selected_fqdn %}Showing traffic for <strong>{{ selected_fqdn }}</strong>.{% else %}Showing traffic for all FQDNs.{% endif %} Latest 100 matching requests are displayed. Excel includes every matching request in the available active access logs; rotated logs are not included.</p>
+</section>
+<p id="traffic-refresh-status" role="status">Live updates every 5 seconds</p>
+<section class="table-wrap"><table>
+  <thead><tr><th>Time</th><th>Incoming IP</th><th>Destination FQDN</th><th>Destination server</th><th>Request</th><th>Status</th><th>Details</th></tr></thead>
+  <tbody id="traffic-rows" data-url="{% url 'traffic_rows' %}?fqdn={{ selected_fqdn|urlencode }}">{% include 'proxies/traffic_rows.html' %}</tbody>
+</table></section>
+{% endblock %}

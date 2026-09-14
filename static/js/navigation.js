@@ -99,7 +99,7 @@
     if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
       || link.hasAttribute('download') || (link.target && link.target !== '_self')) return;
     const url = new URL(link.href, window.location.href);
-    if (url.origin !== window.location.origin || !appPath(url.pathname) || url.pathname.endsWith('.pdf')
+    if (url.origin !== window.location.origin || !appPath(url.pathname) || /\.(pdf|xlsx)$/i.test(url.pathname)
       || (url.hash && url.pathname === window.location.pathname && url.search === window.location.search)) return;
     event.preventDefault();
     if (!posting) visit(url.href);

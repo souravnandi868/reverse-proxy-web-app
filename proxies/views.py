@@ -236,13 +236,37 @@ def certificate_delete(request, pk):
 
 
 @staff_required
+@never_cache
 def audit(request):
-    return render(request, "proxies/audit.html", {"traffic_logs": recent_traffic_logs()})
+    fqdn = request.GET.get("fqdn", "").strip().lower().rstrip(".")
+    return render(request, "proxies/audit.html", {
+        "traffic_logs": recent_traffic_logs(fqdn=fqdn),
+        "selected_fqdn": fqdn,
+        "traffic_domains": ProxyConfig.objects.values_list("domain_name", flat=True),
+    })
 
 
 @staff_required
 @require_GET
 @never_cache
 def traffic_rows(request):
-    html = render_to_string("proxies/traffic_rows.html", {"traffic_logs": recent_traffic_logs()}, request=request)
+    fqdn = request.GET.get("fqdn", "").strip().lower().rstrip(".")
+    html = render_to_string("proxies/traffic_rows.html", {"traffic_logs": recent_traffic_logs(fqdn=fqdn)}, request=request)
     return JsonResponse({"html": html})
+
+
+@staff_required
+@require_GET
+@never_cache
+def traffic_export(request):
+    from .services import iter_traffic_logs
+    from .traffic_excel import build_traffic_excel
+
+    fqdn = request.GET.get("fqdn", "").strip().lower().rstrip(".")
+    response = HttpResponse(
+        build_traffic_excel(iter_traffic_logs(fqdn)),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    filename = "incoming-traffic-filtered.xlsx" if fqdn else "incoming-traffic-all.xlsx"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

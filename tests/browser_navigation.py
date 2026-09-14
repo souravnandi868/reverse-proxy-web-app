@@ -13,6 +13,43 @@ from proxies.models import ProxyConfig
 
 
 class NavigationBrowserTests(StaticLiveServerTestCase):
+    def test_traffic_filter_and_excel_without_navigation(self):
+        import json
+        from io import BytesIO
+        from pathlib import Path
+        from openpyxl import load_workbook
+
+        get_user_model().objects.create_superuser("traffic-admin", password="test-password")
+        with TemporaryDirectory() as logs, self.settings(NGINX_ACCESS_LOG_DIR=logs), sync_playwright() as playwright:
+            Path(logs, "test.access.log").write_text("\n".join(json.dumps({
+                "destination_fqdn": domain, "time": "2026-09-14T12:00:00Z", "request": "GET /",
+            }) for domain in ["one.example.org", "two.example.org"]), encoding="utf-8")
+            browser = playwright.chromium.launch(channel="chrome", headless=True)
+            page = browser.new_page()
+            page.goto(self.live_server_url + "/login/?next=/audit/")
+            page.locator('[name="username"]').fill("traffic-admin")
+            page.locator('[name="password"]').fill("test-password")
+            page.get_by_role("button", name="Sign in", exact=True).click()
+            expect(page.locator("#traffic-rows")).to_contain_text("two.example.org")
+            page.evaluate("window.documentToken = 'unchanged'")
+            page.locator("#traffic-fqdn").fill("one.example.org")
+            page.get_by_role("button", name="Filter", exact=True).click()
+            expect(page.locator("#traffic-rows")).to_contain_text("one.example.org")
+            expect(page.locator("#traffic-rows")).not_to_contain_text("two.example.org")
+            with page.expect_response(lambda response: "/audit/rows/?fqdn=one.example.org" in response.url):
+                page.wait_for_timeout(5500)
+            expect(page.locator("#traffic-rows")).not_to_contain_text("two.example.org")
+            for label, count in [("Export current view to Excel", 2), ("Export all to Excel", 3)]:
+                with page.expect_download() as download:
+                    page.get_by_role("link", name=label, exact=True).click()
+                workbook = load_workbook(BytesIO(Path(download.value.path()).read_bytes()))
+                self.assertEqual(workbook.active.max_row, count)
+                workbook.close()
+            page.get_by_role("link", name="Show all", exact=True).click()
+            expect(page.locator("#traffic-rows")).to_contain_text("two.example.org")
+            self.assertEqual(page.evaluate("window.documentToken"), "unchanged")
+            browser.close()
+
     def test_workflows_keep_the_same_document(self):
         get_user_model().objects.create_superuser("browser-admin", password="test-password")
         with TemporaryDirectory() as media, self.settings(MEDIA_ROOT=media), patch("proxies.forms.certificate_valid_until", return_value=date(2030, 1, 1)), patch("proxies.forms.resolve_public_ip", return_value="8.8.8.8"), patch(

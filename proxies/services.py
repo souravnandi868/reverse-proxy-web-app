@@ -1,4 +1,5 @@
 import json
+import heapq
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,22 +30,30 @@ def render_proxy_config(proxy):
     return f"""# Managed by NGINX Proxy Admin. Do not edit manually.\nserver {{\n    listen {listen};\n    server_name {proxy.domain_name};\n    access_log {log_path} proxy_admin;\n    error_log {error_log_path} warn;\n{ssl_block}    location / {{\n        proxy_pass {proxy.backend_protocol}://{proxy.backend_private_ip}:{proxy.backend_port};\n{upstream_tls}        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_connect_timeout 5s;\n        proxy_read_timeout 60s;\n    }}\n}}\n"""
 
 
-def recent_traffic_logs(limit=100):
+def iter_traffic_logs(fqdn=""):
+    """Read available active access logs; filter before limiting displayed rows."""
     log_dir = Path(getattr(settings, "NGINX_ACCESS_LOG_DIR", "/var/log/nginx/proxy-admin"))
-    entries = []
+    fqdn = fqdn.strip().lower().rstrip(".")
     for log_path in log_dir.glob("*.access.log"):
         try:
-            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            with log_path.open(encoding="utf-8", errors="replace") as log:
+                for line in log:
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(entry, dict):
+                        continue
+                    if fqdn and str(entry.get("destination_fqdn", "")).lower().rstrip(".") != fqdn:
+                        continue
+                    entry["log_file"] = log_path.name
+                    yield entry
         except OSError:
             continue
-        for line in lines[-limit:]:
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            entry["log_file"] = log_path.name
-            entries.append(entry)
-    return sorted(entries, key=lambda entry: entry.get("time", ""), reverse=True)[:limit]
+
+
+def recent_traffic_logs(limit=100, fqdn=""):
+    return heapq.nlargest(limit, iter_traffic_logs(fqdn), key=lambda entry: str(entry.get("time", "")))
 
 
 def next_backup_version(proxy):

@@ -21,4 +21,5 @@ urlpatterns = [
     path("certificates/<int:pk>/delete/", views.certificate_delete, name="certificate_delete"),
     path("audit/", views.audit, name="audit"),
     path("audit/rows/", views.traffic_rows, name="traffic_rows"),
+    path("audit/export.xlsx", views.traffic_export, name="traffic_export"),
 ]
