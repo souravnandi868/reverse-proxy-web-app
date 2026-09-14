@@ -12,7 +12,7 @@
 </head>
 <body>
   <aside class="sidebar">
-    <a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">N</span><span><b>Reverse Proxy</b><small>Manager</small></span></a>
+    <a class="brand" href="{% url 'dashboard' %}"><img class="brand-logo" src="{% static 'images/kolkata-police-logo.png' %}" alt="Kolkata Police emblem" width="58" height="58"><span><b>Reverse Proxy</b><small>Manager</small></span></a>
     <nav>
       <a href="{% url 'dashboard' %}" class="nav-link {% if request.path == '/' %}active{% endif %}"><span>▦</span>Dashboard</a>
       <a href="{% url 'proxy_list' %}" class="nav-link {% if request.resolver_match.url_name == 'proxy_list' or request.resolver_match.url_name == 'proxy_create' or request.resolver_match.url_name == 'proxy_edit' or request.resolver_match.url_name == 'proxy_delete' %}active{% endif %}"><span>▤</span>Reverse Proxies</a>
@@ -25,7 +25,7 @@
     <div class="sidebar-foot"><strong>Kolkata Police</strong><span>IT Infrastructure</span><small>Secure Systems<br>Safer Citizens</small></div>
   </aside>
   <main class="main">
-    <header class="topbar"><div><h1>{% block heading %}Infrastructure Overview{% endblock %}</h1><p>Monitor and manage your Nginx reverse proxies, domains, certificates and backend services.</p></div><div class="topbar-tools"><label class="search"><span>⌕</span><input type="search" placeholder="Search domains, IPs, or servers..." aria-label="Search"></label><span class="bell">●</span><div class="user-menu"><span class="avatar">{{ request.user.get_username|slice:':1'|upper }}</span><span><b>{{ request.user.get_username|title }}</b><small>Network Administrator</small></span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Sign out</button></form></div></div></header>
+    <header class="topbar"><div><h1>{% block heading %}Kolkatapolice Reverse Proxy Dashboard{% endblock %}</h1><p>Monitor and manage your Nginx reverse proxies, domains, certificates and backend services.</p></div><div class="topbar-tools"><label class="search"><span>⌕</span><input type="search" placeholder="Search domains, IPs, or servers..." aria-label="Search"></label><span class="bell">●</span><div class="user-menu"><span class="avatar">{{ request.user.get_username|slice:':1'|upper }}</span><span><b>{{ request.user.get_username|title }}</b><small>Network Administrator</small></span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Sign out</button></form></div></div></header>
     {% if messages %}<div class="messages">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
     {% block content %}{% endblock %}
   </main>
