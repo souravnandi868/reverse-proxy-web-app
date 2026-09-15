@@ -2,12 +2,12 @@
   <div class="panel-title"><h2>NGINX Server</h2><b>{{ host_monitor_status }}</b></div>
   {% if host_summary %}
     <p class="host-summary-meta">{{ host_summary.address }} · Last received {{ host_summary.received_at|date:'H:i:s' }}{% if host_monitor_status == 'Stale' %} · Agent not reporting{% endif %}</p>
-    <dl class="host-summary-grid">
-      <div><dt>CPU</dt><dd>{{ host_summary.cpu }}</dd></div>
-      <div><dt>RAM</dt><dd>{{ host_summary.ram }}</dd></div>
-      <div><dt>NGINX log storage</dt><dd>{{ host_summary.storage }}</dd></div>
-      <div><dt>External traffic</dt><dd><small>RX</small> {{ host_summary.rx }}<br><small>TX</small> {{ host_summary.tx }}</dd></div>
-    </dl>
+    <div class="host-visual-grid">
+      <div class="host-gauge host-gauge-cpu"><span>CPU</span><strong>{{ host_summary.cpu }}</strong><meter min="0" max="100" value="{{ host_summary.cpu_value }}" aria-label="CPU usage {{ host_summary.cpu }}">{{ host_summary.cpu }}</meter></div>
+      <div class="host-gauge host-gauge-ram"><span>RAM</span><strong>{{ host_summary.ram }}</strong><meter min="0" max="100" value="{{ host_summary.ram_value }}" aria-label="RAM usage {{ host_summary.ram }}">{{ host_summary.ram }}</meter></div>
+      <div class="host-mini-row"><span class="host-mini-icon" aria-hidden="true">▤</span><span>NGINX log storage</span><strong>{{ host_summary.storage }}</strong></div>
+      <div class="host-mini-row host-traffic"><span class="host-mini-icon" aria-hidden="true">⇅</span><span>External traffic</span><strong><small>RX</small> {{ host_summary.rx }}<br><small>TX</small> {{ host_summary.tx }}</strong></div>
+    </div>
   {% elif host_monitor_status == 'Waiting' %}
     <p class="muted">Waiting for the NGINX host monitoring agent to send its first sample.</p>
   {% else %}

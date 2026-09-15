@@ -100,8 +100,12 @@ class MonitoringTests(TestCase):
                       nginx_rx_bps=1024, nginx_tx_bps=2048)
         self.assertEqual(self.send(sample).status_code, 200)
         response = self.client.get("/")
+        self.assertContains(response, "Last received")
+        self.assertRegex(response.content.decode(), r"Last received \d{2}:\d{2}:\d{2}")
         for value in ("10.0.0.4", "25.0%", "40.0%", "2.0 KiB", "1.00 KiB/s", "2.00 KiB/s"):
             self.assertContains(response, value)
+        self.assertContains(response, 'value="25" aria-label="CPU usage 25.0%"')
+        self.assertContains(response, 'value="40" aria-label="RAM usage 40.0%"')
         ServerMonitor.objects.update(received_at=timezone.now() - timedelta(seconds=31))
         response = self.client.get("/")
         self.assertContains(response, "Agent not reporting")

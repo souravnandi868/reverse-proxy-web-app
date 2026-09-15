@@ -4,6 +4,7 @@ import hmac
 import ipaddress
 import json
 import math
+from datetime import datetime
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
@@ -127,9 +128,11 @@ def dashboard_summary(host):
                      if disk.get("kind") == "directory" and disk.get("mount", "").rstrip("/") == "/var/log/nginx"), None)
     return {
         "address": host["address"],
-        "received_at": host["received_at"],
+        "received_at": datetime.fromisoformat(host["received_at"]),
         "cpu": f'{metrics["cpu"]:.1f}%',
+        "cpu_value": metrics["cpu"],
         "ram": f'{metrics["ram"]["percent"]:.1f}%',
+        "ram_value": metrics["ram"]["percent"],
         "storage": size(log_disk["used"]) if log_disk else "Unavailable",
         "rx": rate(metrics.get("nginx_rx_bps")),
         "tx": rate(metrics.get("nginx_tx_bps")),

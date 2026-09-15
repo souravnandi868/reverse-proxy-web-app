@@ -2,11 +2,21 @@
 
 /* Compact host snapshot in the dashboard sidebar. */
 .host-summary-meta{margin:0 0 10px;color:#71829a;font-size:10px}
-.host-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0}
-.host-summary-grid>div{padding:9px;background:#f5f8fc;border-radius:6px}
-.host-summary-grid dt{color:#71829a;font-size:10px}
-.host-summary-grid dd{margin:4px 0 0;color:#15345f;font-size:13px;font-weight:700;line-height:1.4}
-.host-summary-grid dd small{color:#71829a;font-size:10px;font-weight:600}
+.host-visual-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.host-gauge,.host-mini-row{padding:9px;background:#f5f8fc;border-radius:6px}
+.host-gauge{display:grid;gap:4px}
+.host-gauge span,.host-mini-row>span:nth-child(2){color:#71829a;font-size:10px}
+.host-gauge strong,.host-mini-row strong{color:#15345f;font-size:13px;line-height:1.4}
+.host-gauge meter{width:100%;height:9px}
+.host-gauge-cpu meter{accent-color:#0875df}
+.host-gauge-ram meter{accent-color:#16a34a}
+.host-gauge meter::-webkit-meter-bar{background:#dce7f3;border:0;border-radius:9px}
+.host-gauge-cpu meter::-webkit-meter-optimum-value{background:#0875df;border-radius:9px}
+.host-gauge-ram meter::-webkit-meter-optimum-value{background:#16a34a;border-radius:9px}
+.host-mini-row{grid-column:1/-1;display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:8px}
+.host-mini-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:6px;background:#dceaff;color:#0875df;font-size:16px}
+.host-traffic strong{font-size:11px;text-align:right}
+.host-traffic strong small{color:#71829a;font-size:9px}
 
 /* Keep icons centered and independent of text font metrics. */
 .stat .stat-icon,.service-banner .service-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1}
