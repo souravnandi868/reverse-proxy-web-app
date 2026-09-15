@@ -1,7 +1,8 @@
 .captcha-field{display:grid;gap:8px;margin:14px 0}
 .captcha-image-row{display:flex;align-items:center;gap:12px}
 .captcha-image-row img{max-width:100%;border:1px solid #d8e3ef;border-radius:8px}
-.captcha-image-row a{color:#0875df;font-size:13px}
+.captcha-reload{padding:8px 12px;border:1px solid #0875df;border-radius:6px;background:#fff;color:#0875df;font-size:13px;cursor:pointer}
+.captcha-reload:hover,.captcha-reload:focus-visible{background:#eaf4ff}
 .captcha-field input{width:100%}
 .captcha-field small{color:#65758c;font-size:11px}
 .captcha-field .errorlist{margin:0;color:#b91c1c;font-size:12px}

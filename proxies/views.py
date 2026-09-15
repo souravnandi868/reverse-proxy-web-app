@@ -32,7 +32,7 @@ def log_action(request, action, target, detail=None):
 @staff_required
 @never_cache
 def dashboard(request):
-    from .monitoring import snapshots
+    from .monitoring import dashboard_summary, snapshots
     proxies = ProxyConfig.objects.select_related("certificate_bundle").all()
     host = next(iter(snapshots()), None)
     expiry_cutoff = timezone.localdate() + timedelta(days=30)
@@ -44,6 +44,7 @@ def dashboard(request):
         "certificate_expiring_count": active_certificates.filter(valid_until__isnull=False, valid_until__lte=expiry_cutoff).count(),
         "traffic_logs": recent_traffic_logs(6),
         "host_monitor_status": {"live": "Live", "stale": "Stale", "waiting": "Waiting"}.get(host["status"], "Not configured") if host else "Not configured",
+        "host_summary": dashboard_summary(host),
     })
 
 

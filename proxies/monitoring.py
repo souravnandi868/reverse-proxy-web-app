@@ -104,6 +104,38 @@ def snapshots():
     return result
 
 
+def dashboard_summary(host):
+    """Compact values from the same sample used by the server resource page."""
+    if not host or not host["metrics"]:
+        return None
+    metrics = host["metrics"]
+
+    def size(value):
+        units = ("B", "KiB", "MiB", "GiB", "TiB")
+        index = 0
+        while value >= 1024 and index < len(units) - 1:
+            value /= 1024
+            index += 1
+        return f"{value:.1f} {units[index]}"
+
+    def rate(value):
+        if value is None:
+            return "Unavailable"
+        return f"{value / 1024 / 1024:.2f} MiB/s" if value >= 1024 * 1024 else f"{value / 1024:.2f} KiB/s"
+
+    log_disk = next((disk for disk in metrics.get("disks", [])
+                     if disk.get("kind") == "directory" and disk.get("mount", "").rstrip("/") == "/var/log/nginx"), None)
+    return {
+        "address": host["address"],
+        "received_at": host["received_at"],
+        "cpu": f'{metrics["cpu"]:.1f}%',
+        "ram": f'{metrics["ram"]["percent"]:.1f}%',
+        "storage": size(log_disk["used"]) if log_disk else "Unavailable",
+        "rx": rate(metrics.get("nginx_rx_bps")),
+        "tx": rate(metrics.get("nginx_tx_bps")),
+    }
+
+
 @staff_required
 @require_GET
 @never_cache

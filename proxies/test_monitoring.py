@@ -93,6 +93,27 @@ class MonitoringTests(TestCase):
         self.client.force_login(self.user)
         self.assertContains(self.client.get("/servers/"), 'id="resource-monitor"')
 
+    def test_dashboard_shows_latest_host_summary_and_stale_state(self):
+        self.client.force_login(self.user)
+        self.assertContains(self.client.get("/"), "Waiting for the NGINX host monitoring agent")
+        sample = dict(self.sample, disks=[{"mount": "/var/log/nginx/", "kind": "directory", "used": 2048}],
+                      nginx_rx_bps=1024, nginx_tx_bps=2048)
+        self.assertEqual(self.send(sample).status_code, 200)
+        response = self.client.get("/")
+        for value in ("10.0.0.4", "25.0%", "40.0%", "2.0 KiB", "1.00 KiB/s", "2.00 KiB/s"):
+            self.assertContains(response, value)
+        ServerMonitor.objects.update(received_at=timezone.now() - timedelta(seconds=31))
+        response = self.client.get("/")
+        self.assertContains(response, "Agent not reporting")
+        self.assertContains(response, "25.0%")
+
+    def test_dashboard_marks_missing_storage_and_traffic_unavailable(self):
+        self.client.force_login(self.user)
+        self.assertEqual(self.send().status_code, 200)
+        response = self.client.get("/")
+        self.assertContains(response, "NGINX log storage")
+        self.assertContains(response, "Unavailable", count=3)
+
     def test_agent_network_rates_handle_elapsed_time_and_counter_reset(self):
         spec = importlib.util.spec_from_file_location("monitor_agent", Path(__file__).resolve().parent.parent / "ops/monitor-agent.py")
         module = importlib.util.module_from_spec(spec)

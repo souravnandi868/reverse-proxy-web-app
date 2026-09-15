@@ -1,0 +1,17 @@
+<section id="servers" class="panel">
+  <div class="panel-title"><h2>NGINX Server</h2><b>{{ host_monitor_status }}</b></div>
+  {% if host_summary %}
+    <p class="host-summary-meta">{{ host_summary.address }} · Last received {{ host_summary.received_at|date:'H:i:s' }}{% if host_monitor_status == 'Stale' %} · Agent not reporting{% endif %}</p>
+    <dl class="host-summary-grid">
+      <div><dt>CPU</dt><dd>{{ host_summary.cpu }}</dd></div>
+      <div><dt>RAM</dt><dd>{{ host_summary.ram }}</dd></div>
+      <div><dt>NGINX log storage</dt><dd>{{ host_summary.storage }}</dd></div>
+      <div><dt>External traffic</dt><dd><small>RX</small> {{ host_summary.rx }}<br><small>TX</small> {{ host_summary.tx }}</dd></div>
+    </dl>
+  {% elif host_monitor_status == 'Waiting' %}
+    <p class="muted">Waiting for the NGINX host monitoring agent to send its first sample.</p>
+  {% else %}
+    <p class="muted">NGINX host monitoring is not configured.</p>
+  {% endif %}
+  <a class="panel-link" href="{% url 'servers' %}">View NGINX host resources &rarr;</a>
+</section>
