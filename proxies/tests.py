@@ -111,10 +111,41 @@ class ProxyValidationTests(TestCase):
         self.assertNotIn("public_ip", form.fields)
 
     @patch("proxies.forms.resolve_public_ip", return_value=None)
-    def test_public_ip_requires_fqdn_resolution(self, resolve_public_ip):
+    def test_unresolved_fqdn_can_be_saved_without_public_ip(self, resolve_public_ip):
         form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})
-        self.assertFalse(form.is_valid())
-        self.assertIn("domain_name", form.errors)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIsNone(form.save(commit=False).public_ip)
+
+    @patch("proxies.forms.resolve_public_ip", return_value=None)
+    def test_existing_public_ip_survives_temporary_lookup_failure(self, resolve_public_ip):
+        user = get_user_model().objects.create_user("dns-editor", is_staff=True)
+        proxy = ProxyConfig.objects.create(domain_name="app.example.com", public_ip="8.8.8.8",
+            backend_private_ip="10.0.0.4", backend_port=8080, created_by=user, updated_by=user)
+        form = ProxyConfigForm(data={"domain_name": proxy.domain_name, "backend_private_ip": "10.0.0.4",
+            "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "enabled": True}, instance=proxy)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save().public_ip, "8.8.8.8")
+
+    @patch("proxies.forms.resolve_public_ip", return_value=None)
+    def test_renamed_domain_does_not_keep_old_public_ip(self, resolve_public_ip):
+        user = get_user_model().objects.create_user("dns-renamer", is_staff=True)
+        proxy = ProxyConfig.objects.create(domain_name="old.example.com", public_ip="8.8.8.8",
+            backend_private_ip="10.0.0.4", backend_port=8080, created_by=user, updated_by=user)
+        form = ProxyConfigForm(data={"domain_name": "new.example.com", "backend_private_ip": "10.0.0.4",
+            "backend_port": 8080, "incoming_protocol": "http", "backend_protocol": "http", "enabled": True}, instance=proxy)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIsNone(form.save().public_ip)
+
+    @patch("proxies.forms.resolve_public_ip", return_value=None)
+    def test_new_route_is_created_with_dns_warning(self, resolve_public_ip):
+        user = get_user_model().objects.create_user("dns-new", is_staff=True)
+        self.client.force_login(user)
+        response = self.client.post("/proxies/new/", {"domain_name": "internal.example.com",
+            "backend_private_ip": "10.0.0.4", "backend_port": 8080,
+            "incoming_protocol": "http", "backend_protocol": "http", "enabled": True}, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(ProxyConfig.objects.filter(domain_name="internal.example.com", public_ip__isnull=True).exists())
+        self.assertContains(response, "No public IP was found")
 
     def test_https_requires_certificate(self):
         form = ProxyConfigForm(data={"domain_name": "app.example.com", "backend_private_ip": "10.0.0.4", "backend_port": 8080, "incoming_protocol": "https", "backend_protocol": "http", "nat_notes": "", "firewall_notes": "", "enabled": True})

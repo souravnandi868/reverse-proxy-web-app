@@ -83,6 +83,8 @@ def proxy_create(request):
         proxy.save()
         log_action(request, "create", proxy.domain_name)
         messages.success(request, "Proxy saved. Apply it after reviewing the generated configuration.")
+        if not proxy.public_ip:
+            messages.warning(request, "No public IP was found for this FQDN. The route was saved; publish public DNS before expecting external access.")
         return redirect("dashboard")
     return render(request, "proxies/proxy_form.html", {"form": form, "title": "Add proxy"})
 
@@ -99,6 +101,8 @@ def proxy_edit(request, pk):
             proxy.save()
         log_action(request, "update", proxy.domain_name)
         messages.success(request, "Proxy updated and previous configuration backed up.")
+        if not proxy.public_ip:
+            messages.warning(request, "No public IP was found for this FQDN. Publish public DNS before expecting external access.")
         return redirect("dashboard")
     return render(request, "proxies/proxy_form.html", {"form": form, "title": f"Edit {proxy.domain_name}", "proxy": proxy})
 

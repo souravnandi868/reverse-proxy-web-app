@@ -40,7 +40,7 @@ class ProxyConfigForm(forms.ModelForm):
         model = ProxyConfig
         fields = ["domain_name", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "enabled"]
         help_texts = {
-            "domain_name": "The public IP is resolved automatically from this FQDN on save. Scheduled DNS refresh checks it every 5 minutes when enabled.",
+            "domain_name": "A public IP is resolved automatically when public DNS is available. You can save the route before DNS is published; the scheduled refresh checks every 5 minutes.",
         }
         widgets = {
             "domain_name": forms.TextInput(attrs={"placeholder": "app.example.com"}),
@@ -72,7 +72,11 @@ class ProxyConfigForm(forms.ModelForm):
                 cleaned["public_ip"] = public_ip
                 self._resolved_public_ip = public_ip
             else:
-                self.add_error("domain_name", "The FQDN does not resolve to a public IP address.")
+                # NGINX can stage a route before its public DNS record exists.
+                # Preserve the last known address when an existing lookup fails.
+                self._resolved_public_ip = (self.instance.public_ip if self.instance.pk
+                                            and cleaned["domain_name"] == self.instance.domain_name else None)
+                cleaned["public_ip"] = self._resolved_public_ip
         if cleaned.get("incoming_protocol") == "https" and not cleaned.get("certificate_bundle"):
             self.add_error("certificate_bundle", "HTTPS proxies require an active certificate bundle.")
         return cleaned
