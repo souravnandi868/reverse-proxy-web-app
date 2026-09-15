@@ -21,10 +21,12 @@
         if (typeof data.html !== 'string') throw new Error();
         // The authenticated endpoint renders these rows with Django HTML escaping.
         rows.innerHTML = data.html;
-        status.textContent = `Updated ${new Date().toLocaleTimeString()} · Auto-refresh every 5 seconds`;
+        status.textContent = '';
+        status.hidden = true;
       } catch {
         if (stopped) return;
         status.textContent = 'Refresh failed. Showing previous logs; retrying automatically. Check your connection or sign in again.';
+        status.hidden = false;
       } finally { busy = false; }
     }
     timer = window.setInterval(refresh, 5000);

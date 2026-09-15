@@ -12,7 +12,8 @@
     const status = document.createElement('p');
     status.className = 'muted';
     status.setAttribute('role', 'status');
-    status.textContent = 'Live updates every 5 seconds';
+    status.textContent = '';
+    status.hidden = true;
     document.querySelector('.topbar').after(status);
     let busy = false;
     let stopped = false;
@@ -50,10 +51,12 @@
           region.querySelectorAll('.table-wrap').forEach((el, i) => { el.scrollLeft = scrollPositions[i] || 0; });
         });
         document.dispatchEvent(new Event('live-content-updated'));
-        status.textContent = `Updated ${new Date().toLocaleTimeString()} · Live updates every 5 seconds`;
+        status.textContent = '';
+        status.hidden = true;
       } catch {
         if (stopped) return;
         status.textContent = 'Update failed. Showing previous data; retrying automatically. Check your connection or sign in again.';
+        status.hidden = false;
       } finally {
         busy = false;
       }

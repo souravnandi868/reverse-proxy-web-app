@@ -93,7 +93,7 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
             page.locator('.sidebar a[href="/servers/"]').click()
             expect(page.locator("#monitor-status")).to_contain_text("Updated")
             page.locator('.sidebar a[href="/audit/"]').click()
-            expect(page.locator("#traffic-refresh-status")).to_contain_text("Updated")
+            expect(page.locator("#traffic-refresh-status")).to_be_empty()
             page.locator('.sidebar a[href="/servers/"]').click()
             expect(page.locator("#monitor-status")).to_contain_text("Updated")
             page.locator('.sidebar a[href="/certificates/"]').click()
