@@ -1,9 +1,12 @@
 {% load static %}
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Proxy Control</title><link rel="stylesheet" href="{% static 'css/app.css' %}"><link rel="stylesheet" href="{% static 'css/console.css' %}"></head><body class="login-page"><section class="login-panel"><div class="brand"><img class="brand-logo" src="{% static 'images/kolkata-police-logo.png' %}" alt="Kolkata Police emblem" width="58" height="58"><span><b>Kolkatapolice</b><small>Reverse Proxy Manager</small></span></div><span class="eyebrow">SECURE ADMINISTRATION</span><h1>Sign in to your control plane.</h1><form method="post">{% csrf_token %}{{ form.non_field_errors }}<label>Username{{ form.username }}</label><label>Password{{ form.password }}</label><button class="button primary wide" type="submit">Sign in</button><input type="hidden" name="next" value="{{ next }}"></form></section><script src="{% static 'js/certificates.js' %}" defer></script>
-<script src="{% static 'js/servers.js' %}" defer></script>
-<script src="{% static 'js/traffic.js' %}" defer></script>
-<script src="{% static 'js/live-pages.js' %}" defer></script>
-<script src="{% static 'js/search.js' %}" defer></script>
-<script src="{% static 'js/account.js' %}" defer></script>
-<script src="{% static 'js/navigation.js' %}" defer></script>
-</body></html>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Proxy Control</title><link rel="stylesheet" href="{% static 'css/app.css' %}"><link rel="stylesheet" href="{% static 'css/console.css' %}"><link rel="stylesheet" href="{% static 'css/captcha.css' %}"></head>
+<body class="login-page"><section class="login-panel">
+<div class="brand"><img class="brand-logo" src="{% static 'images/kolkata-police-logo.png' %}" alt="Kolkata Police emblem" width="58" height="58"><span><b>Kolkatapolice</b><small>Reverse Proxy Manager</small></span></div>
+<span class="eyebrow">SECURE ADMINISTRATION</span><h1>Sign in to your control plane.</h1>
+<form method="post">{% csrf_token %}{{ form.non_field_errors }}
+<label for="{{ form.username.id_for_label }}">Username{{ form.username }}</label>
+<label for="{{ form.password.id_for_label }}">Password{{ form.password }}</label>
+<div class="captcha-field"><label for="{{ form.captcha.id_for_label }}">Image code</label><div class="captcha-image-row"><img src="{{ captcha_image }}" width="210" height="70" alt="Image code with six case-sensitive letters and digits"><a href="{% url 'login' %}{% if next %}?next={{ next|urlencode }}{% endif %}" aria-label="Get a new image code">New code</a></div>{{ form.captcha }}{{ form.captcha.errors }}<small>Enter the lowercase letters, capital letters, and numbers exactly as shown.</small></div>
+<button class="button primary wide" type="submit">Sign in</button><input type="hidden" name="next" value="{{ next }}"></form>
+</section><script src="{% static 'js/certificates.js' %}" defer></script><script src="{% static 'js/servers.js' %}" defer></script><script src="{% static 'js/traffic.js' %}" defer></script><script src="{% static 'js/live-pages.js' %}" defer></script><script src="{% static 'js/search.js' %}" defer></script><script src="{% static 'js/account.js' %}" defer></script><script src="{% static 'js/navigation.js' %}" defer></script></body></html>
