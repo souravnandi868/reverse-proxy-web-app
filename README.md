@@ -40,9 +40,43 @@ systemctl reload nginx
 
 The main NGINX `http` block must include `/etc/nginx/conf.d/*.conf`. Give the Django service account membership in the `nginx` group and read access to the access logs, including after log rotation. Set `NGINX_ACCESS_LOG_DIR` if logs are stored elsewhere. The incoming IP is the direct peer seen by NGINX; if a trusted load balancer sits in front, configure NGINX real-IP handling for that balancer to record the original client.
 
+## Incremental incoming-traffic collection
+
+Run `python manage.py collect_traffic` continuously alongside Django. It reads appended JSON log lines every 2 seconds; the Incoming Traffic page refreshes every 3 seconds. Run the collector where it can read `NGINX_ACCESS_LOG_DIR` and connect to the same database as Django. On separate hosts, provide read-only access to those logs on the collector host; the resource agent does not forward individual requests.
+
+The collector persists device/inode identity, byte offsets, and a 64-byte continuity marker in `TrafficCursor`. Cursor advances and event inserts commit together, so restarts resume without replaying committed events. Renamed `*.access.log*` files remain discoverable for late writes; compressed archives are ignored. Configure rotation to retain uncompressed rotated files long enough to drain them (for example, delayed compression). Truncation or a changed continuity marker resets that file's offset. As with other file tailers, copytruncate can lose writes during truncation; rename-and-reopen rotation is preferred. Deleting/compressing unread logs loses those unread events.
+
+On first discovery, only the final 256 KiB of an existing file is read; older content is not imported. Each cycle reads at most 256 KiB per file and approximately 4 MiB overall, plus bounded continuity checks. A busy collector catches up over later cycles, so sustained input above this budget delays live data. Lines over 16 KiB and malformed JSON are skipped. Symlinks and non-regular files are ignored. Memory keeps the last 1,000 events in a deque; database history retains at most 100,000 events after each cycle. Unseen cursor records expire after seven days. History is a rolling operational view, not a permanent compliance archive.
+
+Dashboard, traffic refresh, history pagination, and Excel export query indexed events only; they never open access logs. History uses 100-row keyset pages, so incoming inserts do not shift older pages. Historical pages do not auto-refresh; use **Back to live traffic** to resume. Excel exports retained indexed history, including collected rotated-file entries, rather than all contents of the original logs. Arbitrary log fields (including authorization/token fields) are not stored. Existing staff authorization and HTML escaping still apply. Browser pollers allow only one outstanding request per view and abort it on navigation.
+
+For an existing installation, deploy the application code, run `python manage.py migrate --noinput` (adds the cursor/event tables), and `python manage.py collectstatic --noinput` using the Django service account and environment. Use the existing application's graceful code-reload procedure. Review the account, project/virtualenv paths, and environment in `deploy/proxy-traffic-collector.service` before installing it:
+
+```sh
+sudo install -m 0644 deploy/proxy-traffic-collector.service /etc/systemd/system/proxy-traffic-collector.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now proxy-traffic-collector
+sudo systemctl is-active proxy-traffic-collector
+sudo journalctl -u proxy-traffic-collector -n 30 --no-pager
+```
+
+The service account needs log read access and write access to the Django database and project lock file `.traffic-collector.lock`. Exactly one collector must run per installation/log directory; an OS lock rejects a second worker on the same host. Do not run collectors on multiple hosts against the same log source. `python manage.py collect_traffic --once` performs one bounded collection pass when the continuous worker is stopped.
+
+This rollout adds a background collector; an agent-only restart cannot enable it. It requires no NGINX reload/restart, credential rotation, certificate change, or backend application restart. For resource collection, copy the revised agent to `/opt/proxy-monitor/monitor-agent.py` using the agent-update procedure below. The default is now 10 seconds; any explicitly configured `MONITOR_INTERVAL` overrides it, so existing 30-second configurations need an operator change to 10 to meet that cadence. Never print the environment file or token. No production changes are made by the tests.
+
+Verification:
+
+```sh
+python manage.py test --noinput
+python -m unittest proxies.test_monitor_interval -v
+node --test tests/polling.test.cjs tests/servers.test.cjs tests/search.test.cjs
+```
+
+The performance regression creates sparse 1 MiB and 500 MiB log files, then appends the same 50 records. It asserts identical bytes read and exactly 50 JSON parses for both, bounded bootstrap/idle reads, and a generous elapsed-time bound. It also covers restart recovery, rotation, copytruncate, partial/oversized lines, retention, atomic checkpoints, pagination, single-worker locking, and HTTP reads without log access.
+
 ## NGINX reverse proxy host monitoring
 
-Open **NGINX Server** for CPU, RAM, total file size inside `/var/log/nginx/`, and the **External NGINX Traffic** RX/TX graph. The page polls every 5 seconds and keeps the last 60 distinct samples in the browser. Only the latest sample is stored in the database; this is not historical monitoring. A sample older than 30 seconds is marked stale, not offline. Only the explicitly enrolled NGINX host is shown. Backend routes never create monitoring targets.
+Open **NGINX Server** for CPU, RAM, total file size inside `/var/log/nginx/`, and the **External NGINX Traffic** RX/TX graph. The page polls every 10 seconds and keeps the last 60 distinct samples in the browser. Only the latest sample is stored in the database; this is not historical monitoring. A sample older than 30 seconds is marked stale, not offline. Only the explicitly enrolled NGINX host is shown. Backend routes never create monitoring targets.
 
 Install the agent only on the Oracle Linux 9.5 host running NGINX. No software is required on hosted/backend servers. No inbound agent port is needed. The agent sends metrics to the Django application over HTTPS using the enrolled NGINX host token. The IP identifies the server and does not need to match the outbound NAT address.
 
@@ -79,6 +113,7 @@ Set these values in that root-readable environment file:
 MONITOR_URL=https://YOUR-ADMIN-DOMAIN/monitor/ingest/
 MONITOR_ADDRESS=YOUR_NGINX_SERVER_IP
 MONITOR_TOKEN=TOKEN_FROM_ENROLLMENT
+MONITOR_INTERVAL=10
 ```
 
 Use the application's HTTPS address, not a proxied backend domain. The certificate must be trusted by Python. For a private CA, set `SSL_CERT_FILE` to the CA bundle in the same environment file. Preserve the trailing slash; the agent deliberately refuses redirects. NGINX must forward `/monitor/ingest/` and its Authorization header to Django. Keep the endpoint request body limit at least 64 KiB.
@@ -95,7 +130,7 @@ The agent runs unprivileged. Storage recursively sums regular file sizes inside 
 
 The reader starts at EOF on every agent restart (traffic while stopped is intentionally not replayed), reads new files from the beginning, and keeps renamed file handles until they have been inactive for 60 seconds to drain rotation writes. Truncation resets the offset; a trailing-content check also detects truncation followed by regrowth. Prefer rename/reopen rotation: copytruncate can lose bytes during the copy/truncate race, which no polling reader can recover. Partial lines wait for completion; malformed, oversized, and old-format entries are skipped. Missing or unreadable log directories report unavailable rather than NIC traffic.
 
-To deploy this traffic update, install the updated `deploy/00-proxy-admin-logging.conf` in `/etc/nginx/conf.d/`, run `sudo nginx -t`, and reload NGINX only after validation succeeds. Deploy the app and run `python manage.py collectstatic --noinput`. Install the updated agent and systemd service, then run `sudo systemctl daemon-reload` and `sudo systemctl restart proxy-monitor-agent`. The service uses the `nginx` supplementary group: ensure that group can traverse the log directories and read every managed access log, including files created by log rotation (configure the rotation owner/group and mode accordingly). No new database migration or enrollment is needed.
+To deploy this traffic update, install the updated `deploy/00-proxy-admin-logging.conf` in `/etc/nginx/conf.d/`, run `sudo nginx -t`, and reload NGINX only after validation succeeds. Deploy the app and run `python manage.py collectstatic --noinput`. Install the updated agent and systemd service, then run `sudo systemctl daemon-reload` and `sudo systemctl restart proxy-monitor-agent`. The service uses the `nginx` supplementary group: ensure that group can traverse the log directories and read every managed access log, including files created by log rotation (configure the rotation owner/group and mode accordingly). The resource agent alone needs no enrollment change. The incremental incoming-traffic collector described below requires migration 0008.
 
 CPU, RAM and NIC diagnostics describe the whole NGINX host. The Live label means the resource agent is reporting, not that the NGINX service has passed a health check.
 
@@ -128,6 +163,25 @@ For an immediate manual refresh in the application's virtualenv:
 python manage.py refresh_proxy_metadata --all --dns-only
 ```
 
+## Deploy an agent interval update on an existing installation
+
+`MONITOR_INTERVAL=10` sets the delay between submissions in seconds and is also the default when unset. The value must be an integer from 10 through 3600 inclusive; invalid values terminate the agent at startup. Collection and request processing add to this delay. The console's existing 30-second stale threshold is unchanged, so samples can be marked stale between submissions.
+
+From the updated repository checkout on the monitoring host, run the following agent-only update. It preserves the existing environment file, credentials, and service definition. An existing `MONITOR_INTERVAL` setting takes precedence over the 10-second default.
+
+```sh
+set -eu
+sudo /opt/proxy-monitor/.venv/bin/python -c 'import ast; from pathlib import Path; ast.parse(Path("ops/monitor-agent.py").read_text())'
+sudo cp -p /opt/proxy-monitor/monitor-agent.py /opt/proxy-monitor/monitor-agent.py.bak
+sudo install -m 0644 ops/monitor-agent.py /opt/proxy-monitor/monitor-agent.py.new
+sudo mv /opt/proxy-monitor/monitor-agent.py.new /opt/proxy-monitor/monitor-agent.py
+sudo systemctl restart proxy-monitor-agent
+sudo systemctl is-active proxy-monitor-agent
+sudo journalctl -u proxy-monitor-agent -n 30 --no-pager
+```
+
+Allow at least one configured interval for a new sample to reach the console. This update restarts only `proxy-monitor-agent`; no NGINX reload/restart, Django restart, database migration, or `/etc` edit is needed. Hosted web applications continue running. For rollback, restore `/opt/proxy-monitor/monitor-agent.py.bak` to `/opt/proxy-monitor/monitor-agent.py` and restart only `proxy-monitor-agent`.
+
 ## Proxy deletion safety
 
 Only authenticated superusers can delete a proxy, using the CSRF-protected POST confirmation page. Django admin deletion is disabled to prevent bypassing this workflow. GET only displays the exact domain and backend with a route-removal warning.
@@ -141,6 +195,6 @@ Nginx and the database cannot participate in a single atomic transaction. A lost
 
 ## Dynamic application views
 
-The main application intercepts navigation and form submissions, rendering Django responses in place without reloading the browser document. Validation, CSRF protection, certificate deletion confirmation, browser Back/Forward, and PDF downloads are preserved. Lists and metrics receive background updates every five seconds; navigation stops the previous view's polling. Edit and upload fields are not replaced by background updates. Django admin and external links use normal navigation.
+The main application intercepts navigation and form submissions, rendering Django responses in place without reloading the browser document. Validation, CSRF protection, certificate deletion confirmation, browser Back/Forward, and PDF downloads are preserved. Lists receive background updates every five seconds, incoming traffic every three seconds, and server resources every ten seconds; navigation stops the previous view's polling. Edit and upload fields are not replaced by background updates. Django admin and external links use normal navigation.
 
 The optional browser regression test uses an isolated Django test database, mocks DNS and NGINX operations, and requires Google Chrome and Playwright (`python -m pip install playwright`). Run `python manage.py test tests.browser_navigation`. Runtime deployments do not need Playwright.

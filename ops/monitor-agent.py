@@ -201,6 +201,13 @@ def report_http_error(error):
 
 
 def main():
+    error = "MONITOR_INTERVAL must be an integer between 10 and 3600 seconds."
+    try:
+        interval = int(os.environ.get("MONITOR_INTERVAL", "10"))
+    except ValueError:
+        raise SystemExit(error) from None
+    if not 10 <= interval <= 3600:
+        raise SystemExit(error)
     url = os.environ["MONITOR_URL"]
     token = os.environ["MONITOR_TOKEN"]
     address = os.environ["MONITOR_ADDRESS"]
@@ -213,7 +220,7 @@ def main():
     last = time.monotonic()
     failed = False
     while True:
-        time.sleep(5)
+        time.sleep(interval)
         now = time.monotonic()
         try:
             metrics, previous = collect(previous, now - last)

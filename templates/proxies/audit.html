@@ -16,11 +16,12 @@
       <a class="button" download href="{% url 'traffic_export' %}">Export all to Excel</a>
     </div>
   </div>
-  <p class="muted">{% if selected_fqdn %}Showing traffic for <strong>{{ selected_fqdn }}</strong>.{% else %}Showing traffic for all FQDNs.{% endif %} Latest 100 matching requests are displayed. Excel includes every matching request in the available active access logs; rotated logs are not included.</p>
+  <p class="muted">{% if selected_fqdn %}Showing traffic for <strong>{{ selected_fqdn }}</strong>.{% else %}Showing traffic for all FQDNs.{% endif %} 100 requests per page, newest collected first. Recent traffic refreshes every 3 seconds. History and Excel include up to 100,000 retained requests collected by the background worker.</p>
+  {% if before %}<a class="button" href="{% url 'audit' %}?fqdn={{ selected_fqdn|urlencode }}">Back to live traffic</a>{% endif %}
 </section>
 <p id="traffic-refresh-status" role="status" hidden></p>
 <section class="table-wrap"><table>
   <thead><tr><th>Time</th><th>Incoming IP</th><th>Destination FQDN</th><th>Destination server</th><th>Request</th><th>Status</th><th>Details</th></tr></thead>
-  <tbody id="traffic-rows" data-url="{% url 'traffic_rows' %}?fqdn={{ selected_fqdn|urlencode }}">{% include 'proxies/traffic_rows.html' %}</tbody>
+  <tbody id="traffic-rows" data-historical="{% if before %}true{% else %}false{% endif %}" data-url="{% url 'traffic_rows' %}?fqdn={{ selected_fqdn|urlencode }}&amp;before={{ before|urlencode }}">{% include 'proxies/traffic_rows.html' %}</tbody>
 </table></section>
 {% endblock %}

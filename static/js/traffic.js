@@ -4,7 +4,7 @@
     cleanup();
     const rows = document.getElementById('traffic-rows');
     const status = document.getElementById('traffic-refresh-status');
-    if (!rows) return;
+    if (!rows || rows.dataset.historical === 'true') return;
     let stopped = false;
     let timer;
     const controller = new AbortController();
@@ -29,7 +29,7 @@
         status.hidden = false;
       } finally { busy = false; }
     }
-    timer = window.setInterval(refresh, 5000);
+    timer = window.setInterval(refresh, 3000);
     refresh();
   }
   document.addEventListener('app:before-render', () => cleanup());

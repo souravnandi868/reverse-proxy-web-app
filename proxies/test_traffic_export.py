@@ -8,6 +8,7 @@ from django.test import TestCase
 from openpyxl import load_workbook
 
 from .services import recent_traffic_logs
+from .traffic_reader import TrafficReader
 
 
 class TrafficExportTests(TestCase):
@@ -25,6 +26,7 @@ class TrafficExportTests(TestCase):
                                request="=1+1", user_agent="<script>test</script>\x01"))
         Path(self.directory.name, "site.access.log").write_text(
             "\n".join(json.dumps(entry) for entry in entries) + "\nnull\n[]\nbroken", encoding="utf-8")
+        TrafficReader(self.directory.name).poll()
 
     def workbook_rows(self, query=""):
         response = self.client.get("/audit/export.xlsx" + query)

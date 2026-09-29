@@ -8,26 +8,25 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from .forms import CertificateBundleForm, ProxyConfigForm
-from .models import AuditLog, ProxyConfig
+from .models import AuditLog, ProxyConfig, TrafficEvent
 from .services import OperationResult, recent_traffic_logs, render_proxy_config
 
 
 class ProxyValidationTests(TestCase):
-    @patch("proxies.views.recent_traffic_logs")
-    def test_live_traffic_rows_are_protected_fresh_and_escaped(self, logs):
+    def test_live_traffic_rows_are_protected_fresh_and_escaped(self):
         self.assertEqual(self.client.get("/audit/rows/").status_code, 302)
         user = get_user_model().objects.create_user("live-logs", is_staff=False)
         self.client.force_login(user)
         self.assertEqual(self.client.get("/audit/rows/").status_code, 403)
         user.is_staff = True
         user.save()
-        logs.return_value = [{"source_ip": "198.51.100.8", "request": "<script>alert(1)</script>"}]
+        TrafficEvent.objects.create(domain="", data={"source_ip": "198.51.100.8", "request": "<script>alert(1)</script>"})
         response = self.client.get("/audit/rows/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("no-store", response["Cache-Control"])
         self.assertIn("198.51.100.8", response.json()["html"])
         self.assertNotIn("<script>", response.json()["html"])
-        logs.return_value = []
+        TrafficEvent.objects.all().delete()
         self.assertIn("No incoming traffic", self.client.get("/audit/rows/").json()["html"])
 
     def test_sidebar_destinations_have_distinct_content(self):
@@ -73,12 +72,12 @@ class ProxyValidationTests(TestCase):
         self.assertNotContains(response, 'name="public_ip"')
         self.assertContains(response, "resolved automatically")
 
-    @patch("proxies.views.recent_traffic_logs")
-    def test_traffic_page_shows_connections_not_configuration_events(self, logs):
+    def test_traffic_page_shows_connections_not_configuration_events(self):
         user = get_user_model().objects.create_user("traffic-operator", is_staff=True)
         AuditLog.objects.create(actor=user, action="create", target="configuration-event.example.com")
-        logs.return_value = [{"source_ip": "198.51.100.8", "destination_fqdn": "app.example.com",
-                              "destination_server": "10.0.0.4:8080", "status": 200}]
+        TrafficEvent.objects.create(domain="app.example.com", data={
+            "source_ip": "198.51.100.8", "destination_fqdn": "app.example.com",
+            "destination_server": "10.0.0.4:8080", "status": 200})
         self.client.force_login(user)
         response = self.client.get("/audit/")
         self.assertContains(response, "198.51.100.8")
@@ -180,6 +179,8 @@ class ProxyValidationTests(TestCase):
                 encoding="utf-8",
             )
             with override_settings(NGINX_ACCESS_LOG_DIR=log_dir):
+                from .traffic_reader import TrafficReader
+                TrafficReader(log_dir).poll()
                 logs = recent_traffic_logs()
         self.assertEqual(logs[0]["source_ip"], "198.51.100.8")
         self.assertEqual(logs[0]["destination_server"], "10.0.0.4:8080")

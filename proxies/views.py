@@ -12,7 +12,7 @@ from datetime import timedelta
 from django.utils import timezone
 from .forms import CertificateBundleForm, ProxyConfigForm
 from .models import AuditLog, CertificateBundle, ProxyConfig
-from .services import apply_proxy, recent_traffic_logs, rollback_proxy, save_backup, test_backend
+from .services import apply_proxy, recent_traffic_logs, traffic_page, rollback_proxy, save_backup, test_backend
 
 
 def staff_required(view):
@@ -245,7 +245,7 @@ def certificate_delete(request, pk):
 def audit(request):
     fqdn = request.GET.get("fqdn", "").strip().lower().rstrip(".")
     return render(request, "proxies/audit.html", {
-        "traffic_logs": recent_traffic_logs(fqdn=fqdn),
+        **traffic_page(fqdn, request.GET.get("before", "")),
         "selected_fqdn": fqdn,
         "traffic_domains": ProxyConfig.objects.values_list("domain_name", flat=True),
     })
@@ -256,7 +256,7 @@ def audit(request):
 @never_cache
 def traffic_rows(request):
     fqdn = request.GET.get("fqdn", "").strip().lower().rstrip(".")
-    html = render_to_string("proxies/traffic_rows.html", {"traffic_logs": recent_traffic_logs(fqdn=fqdn)}, request=request)
+    html = render_to_string("proxies/traffic_rows.html", traffic_page(fqdn, request.GET.get("before", "")), request=request)
     return JsonResponse({"html": html})
 
 

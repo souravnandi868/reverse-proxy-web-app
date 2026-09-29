@@ -1,5 +1,4 @@
 import json
-import heapq
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,30 +29,36 @@ def render_proxy_config(proxy):
     return f"""# Managed by NGINX Proxy Admin. Do not edit manually.\nserver {{\n    listen {listen};\n    server_name {proxy.domain_name};\n    access_log {log_path} proxy_admin;\n    error_log {error_log_path} warn;\n{ssl_block}    location / {{\n        proxy_pass {proxy.backend_protocol}://{proxy.backend_private_ip}:{proxy.backend_port};\n{upstream_tls}        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_connect_timeout 5s;\n        proxy_read_timeout 60s;\n    }}\n}}\n"""
 
 
-def iter_traffic_logs(fqdn=""):
-    """Read available active access logs; filter before limiting displayed rows."""
-    log_dir = Path(getattr(settings, "NGINX_ACCESS_LOG_DIR", "/var/log/nginx/proxy-admin"))
+def traffic_events(fqdn=""):
+    from .models import TrafficEvent
+
+    events = TrafficEvent.objects.all()
     fqdn = fqdn.strip().lower().rstrip(".")
-    for log_path in log_dir.glob("*.access.log"):
-        try:
-            with log_path.open(encoding="utf-8", errors="replace") as log:
-                for line in log:
-                    try:
-                        entry = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if not isinstance(entry, dict):
-                        continue
-                    if fqdn and str(entry.get("destination_fqdn", "")).lower().rstrip(".") != fqdn:
-                        continue
-                    entry["log_file"] = log_path.name
-                    yield entry
-        except OSError:
-            continue
+    return events.filter(domain=fqdn) if fqdn else events
+
+
+def iter_traffic_logs(fqdn=""):
+    """Export retained indexed history; never open NGINX logs in HTTP workers."""
+    yield from traffic_events(fqdn).values_list("data", flat=True).iterator(chunk_size=500)
 
 
 def recent_traffic_logs(limit=100, fqdn=""):
-    return heapq.nlargest(limit, iter_traffic_logs(fqdn), key=lambda entry: str(entry.get("time", "")))
+    return list(traffic_events(fqdn).values_list("data", flat=True)[:limit])
+
+
+def traffic_page(fqdn="", before=""):
+    """Keyset pagination keeps old pages stable as new events arrive."""
+    events = traffic_events(fqdn)
+    try:
+        cursor = int(before)
+        if 0 < cursor <= 9223372036854775807:
+            events = events.filter(id__lt=cursor)
+    except (ValueError, TypeError):
+        pass
+    page = list(events[:101])
+    return {"traffic_logs": [event.data for event in page[:100]],
+            "next_before": page[99].pk if len(page) > 100 else None,
+            "before": before, "selected_fqdn": fqdn}
 
 
 def next_backup_version(proxy):

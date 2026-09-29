@@ -81,3 +81,21 @@ class ServerMonitor(models.Model):
 class AccountProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="account_profile")
     mobile_number = models.CharField(max_length=25, blank=True)
+
+
+class TrafficCursor(models.Model):
+    """Durable position; identity survives a log being renamed during rotation."""
+    identity = models.CharField(max_length=100, unique=True)
+    offset = models.PositiveBigIntegerField(default=0)
+    anchor = models.BinaryField(default=bytes)
+    skipping = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class TrafficEvent(models.Model):
+    domain = models.CharField(max_length=253, db_index=True)
+    data = models.JSONField()
+
+    class Meta:
+        ordering = ["-id"]
+        indexes = [models.Index(fields=["domain", "-id"], name="traffic_domain_id")]

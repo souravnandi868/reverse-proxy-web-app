@@ -10,6 +10,7 @@ from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from playwright.sync_api import sync_playwright, expect
 
 from proxies.models import ProxyConfig
+from proxies.traffic_reader import TrafficReader
 
 
 class NavigationBrowserTests(StaticLiveServerTestCase):
@@ -18,18 +19,24 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
         from io import BytesIO
         from pathlib import Path
         from openpyxl import load_workbook
+        from django.conf import settings
 
-        get_user_model().objects.create_superuser("traffic-admin", password="test-password")
+        user = get_user_model().objects.create_superuser("traffic-admin", password="test-password")
+        self.client.force_login(user)
+        session_cookie = self.client.cookies[settings.SESSION_COOKIE_NAME].value
         with TemporaryDirectory() as logs, self.settings(NGINX_ACCESS_LOG_DIR=logs), sync_playwright() as playwright:
             Path(logs, "test.access.log").write_text("\n".join(json.dumps({
                 "destination_fqdn": domain, "time": "2026-09-14T12:00:00Z", "request": "GET /",
             }) for domain in ["one.example.org", "two.example.org"]), encoding="utf-8")
+            with Path(logs, "test.access.log").open("a", encoding="utf-8") as handle:
+                handle.write("\n")
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                executor.submit(TrafficReader(logs).poll).result()
             browser = playwright.chromium.launch(channel="chrome", headless=True)
             page = browser.new_page()
-            page.goto(self.live_server_url + "/login/?next=/audit/")
-            page.locator('[name="username"]').fill("traffic-admin")
-            page.locator('[name="password"]').fill("test-password")
-            page.get_by_role("button", name="Sign in", exact=True).click()
+            page.context.add_cookies([{"name": settings.SESSION_COOKIE_NAME,
+                                      "value": session_cookie, "url": self.live_server_url}])
+            page.goto(self.live_server_url + "/audit/")
             expect(page.locator("#traffic-rows")).to_contain_text("two.example.org")
             page.evaluate("window.documentToken = 'unchanged'")
             page.locator("#traffic-fqdn").fill("one.example.org")
