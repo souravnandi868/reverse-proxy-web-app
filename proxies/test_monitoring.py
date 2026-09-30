@@ -93,6 +93,29 @@ class MonitoringTests(TestCase):
         self.client.force_login(self.user)
         self.assertContains(self.client.get("/servers/"), 'id="resource-monitor"')
 
+    def test_history_is_collected_without_page_open_and_survives_new_sessions(self):
+        for cpu in (12, 34, 56):
+            self.assertEqual(self.send(dict(self.sample, cpu=cpu)).status_code, 200)
+        for _ in range(2):
+            browser = Client()
+            browser.force_login(self.user)
+            host = browser.get("/servers/metrics/").json()["servers"][0]
+            self.assertEqual([s["cpu"] for s in host["history"]], [12, 34, 56])
+            self.assertEqual(host["history"][-1]["time"], host["received_at"])
+            self.assertIsNone(host["history"][-1]["rx"])
+
+    def test_history_retention_and_invalid_ingestion(self):
+        self.monitor.history = [{"cpu": n} for n in range(360)]
+        self.monitor.save(update_fields=["history"])
+        self.assertEqual(self.send(dict(self.sample, cpu=101)).status_code, 400)
+        self.monitor.refresh_from_db()
+        self.assertEqual(len(self.monitor.history), 360)
+        self.assertEqual(self.send().status_code, 200)
+        self.monitor.refresh_from_db()
+        self.assertEqual(len(self.monitor.history), 360)
+        self.assertEqual(self.monitor.history[0]["cpu"], 1)
+        self.assertEqual(self.monitor.history[-1]["cpu"], 25)
+
     def test_dashboard_shows_latest_host_summary_and_stale_state(self):
         self.client.force_login(self.user)
         self.assertContains(self.client.get("/"), "Waiting for the NGINX host monitoring agent")

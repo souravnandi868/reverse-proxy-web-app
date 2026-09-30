@@ -5,6 +5,7 @@ import ipaddress
 import json
 import math
 from datetime import datetime
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
@@ -86,22 +87,35 @@ def ingest(request):
         metrics = validate_metrics(json.loads(body))
     except (ValueError, KeyError, TypeError, AttributeError):
         return JsonResponse({"error": "Invalid metrics"}, status=400)
-    monitor.latest = metrics
-    monitor.received_at = timezone.now()
-    monitor.save(update_fields=["latest", "received_at"])
+    with transaction.atomic():
+        monitor = ServerMonitor.objects.select_for_update().get(pk=monitor.pk)
+        monitor.latest = metrics
+        monitor.received_at = timezone.now()
+        disk = next((d["used"] for d in metrics["disks"]
+                     if d.get("kind") == "directory" and d["mount"].rstrip("/") == "/var/log/nginx"), None)
+        sample = {"time": monitor.received_at.isoformat(), "cpu": metrics["cpu"],
+                  "ram": metrics["ram"]["percent"], "disk": disk,
+                  "rx": metrics.get("nginx_rx_bps"), "tx": metrics.get("nginx_tx_bps")}
+        monitor.history = (monitor.history + [sample])[-360:]
+        monitor.save(update_fields=["latest", "received_at", "history"])
     return JsonResponse({"ok": True})
 
 
-def snapshots():
+def snapshots(include_history=False):
     now = timezone.now()
     result = []
-    for monitor in ServerMonitor.objects.filter(is_reverse_proxy=True):
+    monitors = ServerMonitor.objects.filter(is_reverse_proxy=True)
+    if not include_history:
+        monitors = monitors.defer("history")
+    for monitor in monitors:
         received = monitor.received_at
         status = "waiting" if received is None else (
             "live" if (now - received).total_seconds() <= 30 else "stale")
         result.append({"address": monitor.address, "name": "NGINX reverse proxy server", "status": status,
                        "received_at": received.isoformat() if received else None,
                        "metrics": monitor.latest if received else None})
+        if include_history:
+            result[-1]["history"] = monitor.history
     return result
 
 
@@ -150,4 +164,4 @@ def servers(request):
 @require_GET
 @never_cache
 def server_metrics(request):
-    return JsonResponse({"servers": snapshots()})
+    return JsonResponse({"servers": snapshots(include_history=True)})

@@ -10,7 +10,6 @@
     let timer;
     const controller = new AbortController();
     cleanup = () => { stopped = true; clearTimeout(timer); clearInterval(timer); controller.abort(); };
-    const history = new Map();
     const labels = {live: 'Live', stale: 'Stale — agent not reporting', waiting: 'Waiting for metrics', not_configured: 'Monitoring not configured'};
     const bytes = n => {
       const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
@@ -31,14 +30,28 @@
       svg.setAttribute('viewBox', '0 0 300 90');
       svg.setAttribute('role', 'img');
       svg.setAttribute('aria-label', 'Recent resource measurements');
-      const ceiling = percent ? 100 : Math.max(1, ...series.flat());
+      const ceiling = percent ? 100 : Math.max(1, ...series.flat().map(s => s.value).filter(Number.isFinite));
+      const times = series.flat().map(s => Date.parse(s.time));
+      const first = Math.min(...times), last = Math.max(...times);
       series.forEach((values, i) => {
-        const line = document.createElementNS(ns, 'polyline');
-        line.setAttribute('points', values.map((v, j) => `${j * 296 / Math.max(1, values.length - 1) + 2},${86 - v / ceiling * 82}`).join(' '));
-        line.setAttribute('fill', 'none');
-        line.setAttribute('stroke', colors[i]);
-        line.setAttribute('stroke-width', '2');
-        svg.append(line);
+        let segment = [];
+        const flush = () => {
+          if (!segment.length) return;
+          const line = document.createElementNS(ns, 'polyline');
+          line.setAttribute('points', segment.join(' '));
+          line.setAttribute('fill', 'none');
+          line.setAttribute('stroke', colors[i]);
+          line.setAttribute('stroke-width', '2');
+          svg.append(line);
+          segment = [];
+        };
+        values.forEach((sample, j) => {
+          const time = Date.parse(sample.time);
+          if (j && time - Date.parse(values[j - 1].time) > 30000) flush();
+          if (!Number.isFinite(sample.value)) { flush(); return; }
+          segment.push(`${2 + (time - first) * 296 / Math.max(1, last - first)},${86 - sample.value / ceiling * 82}`);
+        });
+        flush();
       });
       return svg;
     }
@@ -57,8 +70,6 @@
     function render(servers) {
       cards.replaceChildren();
       if (!servers.length) cards.append(el('p', 'NGINX host monitoring is not configured. Enroll the reverse proxy server and start its monitoring agent.', 'panel monitor-empty'));
-      const known = new Set(servers.map(s => s.address));
-      for (const key of history.keys()) if (!known.has(key)) history.delete(key);
       servers.forEach(server => {
         const card = el('section', undefined, `panel server-card ${server.status}`);
         const heading = el('div', undefined, 'server-title');
@@ -71,18 +82,12 @@
           return;
         }
         card.append(el('p', `Last received: ${new Date(server.received_at).toLocaleString()}`, 'server-subtitle'));
-        let h = history.get(server.address) || {time: null, samples: []};
+        const samples = server.history || [];
         const nginxDisks = m.disks.filter(d => d.kind === 'directory' && d.mount.replace(/\/+$/, '') === '/var/log/nginx');
         const disk = nginxDisks.length ? nginxDisks[0].used : null;
         const rx = Number.isFinite(m.nginx_rx_bps) ? m.nginx_rx_bps : null;
         const tx = Number.isFinite(m.nginx_tx_bps) ? m.nginx_tx_bps : null;
-        if (server.status === 'live' && h.time !== server.received_at) {
-          if (h.time && Date.parse(server.received_at) - Date.parse(h.time) > 30000) h.samples = [];
-          h.samples.push({cpu: m.cpu, ram: m.ram.percent, disk, rx, tx});
-          h.samples = h.samples.slice(-60); h.time = server.received_at;
-        }
-        history.set(server.address, h);
-        const values = key => h.samples.map(s => s[key]).filter(v => v !== null);
+        const values = key => samples.map(s => ({time: s.time, value: s[key]}));
         const grid = el('div', undefined, 'resource-grid');
         grid.append(resource('CPU', `${m.cpu.toFixed(1)}%`, 'Total processor utilization', [values('cpu')], ['#0875df'], m.cpu));
         grid.append(resource('RAM', `${m.ram.percent.toFixed(1)}%`, `${bytes(m.ram.used)} / ${bytes(m.ram.total)}`, [values('ram')], ['#15986a'], m.ram.percent));

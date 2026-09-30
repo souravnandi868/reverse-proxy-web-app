@@ -76,6 +76,7 @@ class ServerMonitor(models.Model):
     is_reverse_proxy = models.BooleanField(default=False)
     token_hash = models.CharField(max_length=64)
     latest = models.JSONField(default=dict)
+    history = models.JSONField(default=list)
     received_at = models.DateTimeField(null=True, blank=True)
 
 
