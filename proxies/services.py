@@ -24,9 +24,20 @@ def render_proxy_config(proxy):
     upstream_tls = ""
     if proxy.backend_protocol == "https":
         upstream_tls = "        proxy_ssl_server_name on;\n        proxy_ssl_verify off;\n"
+    connection_settings = "        proxy_read_timeout 60s;\n"
+    if proxy.websocket_enabled:
+        # Other request headers, including Authorization, pass through normally.
+        connection_settings = (
+            "        proxy_http_version 1.1;\n"
+            "        proxy_set_header Upgrade $http_upgrade;\n"
+            '        proxy_set_header Connection "upgrade";\n'
+            "        proxy_read_timeout 3600s;\n"
+            "        proxy_send_timeout 3600s;\n"
+            "        proxy_buffering off;\n"
+        )
     log_path = f"/var/log/nginx/proxy-admin/{proxy.domain_name}.access.log"
     error_log_path = f"/var/log/nginx/proxy-admin/{proxy.domain_name}.error.log"
-    return f"""# Managed by NGINX Proxy Admin. Do not edit manually.\nserver {{\n    listen {listen};\n    server_name {proxy.domain_name};\n    access_log {log_path} proxy_admin;\n    error_log {error_log_path} warn;\n{ssl_block}    location / {{\n        proxy_pass {proxy.backend_protocol}://{proxy.backend_private_ip}:{proxy.backend_port};\n{upstream_tls}        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_connect_timeout 5s;\n        proxy_read_timeout 60s;\n    }}\n}}\n"""
+    return f"""# Managed by NGINX Proxy Admin. Do not edit manually.\nserver {{\n    listen {listen};\n    server_name {proxy.domain_name};\n    access_log {log_path} proxy_admin;\n    error_log {error_log_path} warn;\n{ssl_block}    location / {{\n        proxy_pass {proxy.backend_protocol}://{proxy.backend_private_ip}:{proxy.backend_port};\n{upstream_tls}        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_connect_timeout 5s;\n{connection_settings}    }}\n}}\n"""
 
 
 def traffic_events(fqdn=""):

@@ -29,6 +29,7 @@ class ProxyConfig(models.Model):
     backend_protocol = models.CharField(max_length=5, choices=PROTOCOLS, default="http")
     certificate_bundle = models.ForeignKey(CertificateBundle, null=True, blank=True, on_delete=models.PROTECT)
     enabled = models.BooleanField(default=True)
+    websocket_enabled = models.BooleanField("Enable WebSocket support", default=False)
     nat_notes = models.CharField(max_length=500, blank=True)
     firewall_notes = models.CharField(max_length=500, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="proxy_configs_created")

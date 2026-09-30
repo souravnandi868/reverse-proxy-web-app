@@ -38,7 +38,7 @@ def certificate_valid_until(uploaded):
 class ProxyConfigForm(forms.ModelForm):
     class Meta:
         model = ProxyConfig
-        fields = ["domain_name", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "enabled"]
+        fields = ["domain_name", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "websocket_enabled", "enabled"]
         help_texts = {
             "domain_name": "A public IP is resolved automatically when public DNS is available. You can save the route before DNS is published; the scheduled refresh checks every 5 minutes.",
         }
