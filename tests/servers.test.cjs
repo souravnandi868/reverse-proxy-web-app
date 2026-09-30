@@ -10,11 +10,14 @@ class Element {
   replaceChildren() { this.children = []; }
   setAttribute(key, value) { (this.attributes ||= {})[key] = value; }
   querySelectorAll() { return []; }
+  addEventListener(name, callback) { (this.handlers ||= {})[name] = callback; }
+  removeEventListener(name) { delete this.handlers[name]; }
 }
 const textOf = node => [node.textContent, ...node.children.map(textOf)].join(' ');
 
 async function render(rates, history = []) {
-  const nodes = Object.fromEntries(['resource-monitor', 'server-cards', 'monitor-status'].map(id => [id, new Element()]));
+  const nodes = Object.fromEntries(['resource-monitor', 'server-cards', 'monitor-status', 'resource-range'].map(id => [id, new Element()]));
+  nodes['resource-range'].value = '180';
   const metrics = {
     cpu: 10, ram: {used: 100, total: 1000, percent: 10}, disks: [],
     interfaces: [{name: 'eth0', rx: 999999999, tx: 888888888, speed_mbps: 1000}], ...rates,
@@ -30,7 +33,7 @@ async function render(rates, history = []) {
   const card = nodes['server-cards'].children[0];
   const resources = card.children.find(node => node.className === 'resource-grid');
   assert.ok(resources, textOf(nodes['monitor-status']));
-  return {graph: textOf(resources.children[3]), card: textOf(card), cpuChart: resources.children[0].children[3]};
+  return {graph: textOf(resources.children[3]), card: textOf(card), cpuChart: resources.children[0].children[3], nodes};
 }
 
 test('first render and reopening load saved history with gaps for missing reports', async () => {
@@ -68,4 +71,26 @@ test('zero log traffic remains a valid zero rate', async () => {
   const {graph} = await render({nginx_rx_bps: 0, nginx_tx_bps: 0});
   assert.match(graph, /Receive: 0.00 KiB\/s/);
   assert.match(graph, /Send: 0.00 KiB\/s/);
+});
+
+
+test('long-running graphs keep a readable window and can show all saved history', async () => {
+  const end = Date.parse('2026-09-13T12:00:00Z');
+  const history = Array.from({length: 360}, (_, i) => ({
+    time: new Date(end - (359 - i) * 3000).toISOString(), cpu: i % 100,
+  }));
+  const {cpuChart, nodes} = await render({}, history);
+  assert.equal(cpuChart.children[0].attributes.points.split(' ').length, 61);
+  const range = nodes['resource-range'];
+  const count = () => {
+    const card = nodes['server-cards'].children[0];
+    const grid = card.children.find(node => node.className === 'resource-grid');
+    return grid.children[0].children[3].children[0].attributes.points.split(' ').length;
+  };
+  range.value = '0'; range.handlers.change();
+  assert.equal(count(), 360);
+  range.value = '300'; range.handlers.change();
+  assert.equal(count(), 101);
+  range.value = '180'; range.handlers.change();
+  assert.equal(count(), 61);
 });

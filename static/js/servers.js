@@ -8,8 +8,12 @@
     if (!root) return;
     let stopped = false;
     let timer;
+    const range = document.getElementById('resource-range');
+    let latestServers = [];
+    const changeRange = () => render(latestServers);
+    range?.addEventListener('change', changeRange);
     const controller = new AbortController();
-    cleanup = () => { stopped = true; clearTimeout(timer); clearInterval(timer); controller.abort(); };
+    cleanup = () => { stopped = true; clearTimeout(timer); clearInterval(timer); controller.abort(); range?.removeEventListener('change', changeRange); };
     const labels = {live: 'Live', stale: 'Stale — agent not reporting', waiting: 'Waiting for metrics', not_configured: 'Monitoring not configured'};
     const bytes = n => {
       const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
@@ -28,6 +32,7 @@
       const ns = 'http://www.w3.org/2000/svg';
       const svg = document.createElementNS(ns, 'svg');
       svg.setAttribute('viewBox', '0 0 300 90');
+      svg.setAttribute('preserveAspectRatio', 'none');
       svg.setAttribute('role', 'img');
       svg.setAttribute('aria-label', 'Recent resource measurements');
       const ceiling = percent ? 100 : Math.max(1, ...series.flat().map(s => s.value).filter(Number.isFinite));
@@ -59,6 +64,13 @@
       const node = el('div', undefined, 'resource');
       node.append(el('h3', title), el('strong', value), el('small', detail));
       node.append(chart(series, colors, percentage !== undefined));
+      const points = series.flat();
+      if (points.length) {
+        const formatTime = time => new Date(time).toLocaleTimeString();
+        const axis = el('div', undefined, 'graph-time-axis');
+        axis.append(el('span', formatTime(points[0].time)), el('span', formatTime(points[points.length - 1].time)));
+        node.append(axis);
+      }
       if (percentage !== undefined) {
         const meter = el('meter');
         meter.min = 0; meter.max = 100; meter.value = percentage;
@@ -82,7 +94,10 @@
           return;
         }
         card.append(el('p', `Last received: ${new Date(server.received_at).toLocaleString()}`, 'server-subtitle'));
-        const samples = server.history || [];
+        const saved = server.history || [];
+        const seconds = Number(range?.value ?? 180);
+        const end = Date.parse(server.received_at);
+        const samples = seconds > 0 ? saved.filter(s => Date.parse(s.time) >= end - seconds * 1000) : saved;
         const nginxDisks = m.disks.filter(d => d.kind === 'directory' && d.mount.replace(/\/+$/, '') === '/var/log/nginx');
         const disk = nginxDisks.length ? nginxDisks[0].used : null;
         const rx = Number.isFinite(m.nginx_rx_bps) ? m.nginx_rx_bps : null;
@@ -123,7 +138,8 @@
         if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error();
         const data = await response.json();
         if (stopped) return;
-        render(data.servers);
+        latestServers = data.servers;
+        render(latestServers);
         status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
       } catch {
         if (stopped) return;
