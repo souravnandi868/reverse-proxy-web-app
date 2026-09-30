@@ -16,7 +16,6 @@
       <a class="button" download href="{% url 'traffic_export' %}">Export all to Excel</a>
     </div>
   </div>
-  <p class="muted">{% if selected_fqdn %}Showing traffic for <strong>{{ selected_fqdn }}</strong>.{% else %}Showing traffic for all FQDNs.{% endif %} 100 requests per page, newest collected first. Recent traffic refreshes every 3 seconds. History and Excel include up to 100,000 retained requests collected by the background worker.</p>
   {% if before %}<a class="button" href="{% url 'audit' %}?fqdn={{ selected_fqdn|urlencode }}">Back to live traffic</a>{% endif %}
 </section>
 <p id="traffic-refresh-status" role="status" hidden></p>

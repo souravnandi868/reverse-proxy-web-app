@@ -6,7 +6,6 @@
 <section id="website-usage" data-url="{% url 'website_usage_metrics' %}">
   <div class="panel">
     <h2>Usage by FQDN</h2>
-    <p>Traffic, requests, errors and response times from completed NGINX requests. Refreshes every 3 seconds; graphs use 10-second intervals.</p>
     <div class="usage-filters">
       <label>Website <select id="usage-fqdn"><option value="">All websites</option>{% for domain in domains %}<option value="{{ domain }}">{{ domain }}</option>{% endfor %}</select></label>
       <label>Graph range <select id="usage-range"><option value="180">Last 3 minutes</option><option value="300">Last 5 minutes</option><option value="1080">Last 18 minutes</option></select></label>
