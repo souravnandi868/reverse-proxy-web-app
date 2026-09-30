@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load static %}
 {% block title %}NGINX Server Resources | Proxy Control{% endblock %}
 {% block heading %}NGINX Server Resources{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/servers.css' %}?v=2">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/servers.css' %}?v=3">{% endblock %}
 {% block content %}
 <section id="resource-monitor" data-url="{% url 'server_metrics' %}">
   <div class="panel monitor-toolbar"><div><h2>Reverse proxy host resources</h2><p>CPU, RAM, storage and network usage of the NGINX server itself. Updates every 3 seconds. Graphs show the latest 3 minutes by default. The latest 360 readings (about 18 minutes) are saved, even when this page is closed.</p></div><span id="monitor-status" role="status">Connecting…</span></div>
