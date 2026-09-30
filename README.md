@@ -62,7 +62,7 @@ sudo journalctl -u proxy-traffic-collector -n 30 --no-pager
 
 The service account needs log read access and write access to the Django database and project lock file `.traffic-collector.lock`. Exactly one collector must run per installation/log directory; an OS lock rejects a second worker on the same host. Do not run collectors on multiple hosts against the same log source. `python manage.py collect_traffic --once` performs one bounded collection pass when the continuous worker is stopped.
 
-This rollout adds a background collector; an agent-only restart cannot enable it. It requires no NGINX reload/restart, credential rotation, certificate change, or backend application restart. For resource collection, copy the revised agent to `/opt/proxy-monitor/monitor-agent.py` using the agent-update procedure below. The default is now 10 seconds; any explicitly configured `MONITOR_INTERVAL` overrides it, so existing 30-second configurations need an operator change to 10 to meet that cadence. Never print the environment file or token. No production changes are made by the tests.
+This rollout adds a background collector; an agent-only restart cannot enable it. It requires no NGINX reload/restart, credential rotation, certificate change, or backend application restart. For resource collection, copy the revised agent to `/opt/proxy-monitor/monitor-agent.py` using the agent-update procedure below. The default is now 3 seconds; any explicitly configured `MONITOR_INTERVAL` overrides it, so existing 30-second configurations need an operator change to 3 to meet that cadence. Never print the environment file or token. No production changes are made by the tests.
 
 Verification:
 
@@ -76,7 +76,7 @@ The performance regression creates sparse 1 MiB and 500 MiB log files, then appe
 
 ## NGINX reverse proxy host monitoring
 
-Open **NGINX Server** for CPU, RAM, total file size inside `/var/log/nginx/`, and the **External NGINX Traffic** RX/TX graph. The page polls every 10 seconds and loads the latest 360 readings saved in the database (about one hour at the default agent interval). Readings are retained while the page is closed and survive navigation, refreshes, and application restarts. Reporting gaps longer than 30 seconds break graph lines. History starts accumulating after this update; previously discarded readings cannot be recovered. Deploy migration 0010 with `python manage.py migrate`, refresh static assets with `python manage.py collectstatic --noinput`, and restart the Django service. The existing monitoring agent needs no change for history collection. A sample older than 30 seconds is marked stale, not offline. Only the explicitly enrolled NGINX host is shown. Backend routes never create monitoring targets.
+Open **NGINX Server** for CPU, RAM, total file size inside `/var/log/nginx/`, and the **External NGINX Traffic** RX/TX graph. The page polls every 3 seconds and loads the latest 360 readings saved in the database (about 18 minutes at the default agent interval). Readings are retained while the page is closed and survive navigation, refreshes, and application restarts. Reporting gaps longer than 30 seconds break graph lines. History starts accumulating after this update; previously discarded readings cannot be recovered. Deploy migration 0010 with `python manage.py migrate`, refresh static assets with `python manage.py collectstatic --noinput`, and restart the Django service. Update the monitoring agent using the procedure below and set MONITOR_INTERVAL=3 in its existing environment file to collect new readings every three seconds. History collection continues while the page is closed. A sample older than 30 seconds is marked stale, not offline. Only the explicitly enrolled NGINX host is shown. Backend routes never create monitoring targets.
 
 Install the agent only on the Oracle Linux 9.5 host running NGINX. No software is required on hosted/backend servers. No inbound agent port is needed. The agent sends metrics to the Django application over HTTPS using the enrolled NGINX host token. The IP identifies the server and does not need to match the outbound NAT address.
 
@@ -113,7 +113,7 @@ Set these values in that root-readable environment file:
 MONITOR_URL=https://YOUR-ADMIN-DOMAIN/monitor/ingest/
 MONITOR_ADDRESS=YOUR_NGINX_SERVER_IP
 MONITOR_TOKEN=TOKEN_FROM_ENROLLMENT
-MONITOR_INTERVAL=10
+MONITOR_INTERVAL=3
 ```
 
 Use the application's HTTPS address, not a proxied backend domain. The certificate must be trusted by Python. For a private CA, set `SSL_CERT_FILE` to the CA bundle in the same environment file. Preserve the trailing slash; the agent deliberately refuses redirects. NGINX must forward `/monitor/ingest/` and its Authorization header to Django. Keep the endpoint request body limit at least 64 KiB.
@@ -165,9 +165,9 @@ python manage.py refresh_proxy_metadata --all --dns-only
 
 ## Deploy an agent interval update on an existing installation
 
-`MONITOR_INTERVAL=10` sets the delay between submissions in seconds and is also the default when unset. The value must be an integer from 10 through 3600 inclusive; invalid values terminate the agent at startup. Collection and request processing add to this delay. The console's existing 30-second stale threshold is unchanged, so samples can be marked stale between submissions.
+`MONITOR_INTERVAL=3` sets the delay between submissions in seconds and is also the default when unset. The value must be an integer from 3 through 3600 inclusive; invalid values terminate the agent at startup. Collection and request processing add to this delay. The console's existing 30-second stale threshold is unchanged, so samples can be marked stale between submissions.
 
-From the updated repository checkout on the monitoring host, run the following agent-only update. It preserves the existing environment file, credentials, and service definition. An existing `MONITOR_INTERVAL` setting takes precedence over the 10-second default.
+From the updated repository checkout on the monitoring host, run the following agent-only update. It preserves the existing environment file, credentials, and service definition. An existing `MONITOR_INTERVAL` setting takes precedence over the 3-second default.
 
 ```sh
 set -eu
@@ -195,6 +195,6 @@ Nginx and the database cannot participate in a single atomic transaction. A lost
 
 ## Dynamic application views
 
-The main application intercepts navigation and form submissions, rendering Django responses in place without reloading the browser document. Validation, CSRF protection, certificate deletion confirmation, browser Back/Forward, and PDF downloads are preserved. Lists receive background updates every five seconds, incoming traffic every three seconds, and server resources every ten seconds; navigation stops the previous view's polling. Edit and upload fields are not replaced by background updates. Django admin and external links use normal navigation.
+The main application intercepts navigation and form submissions, rendering Django responses in place without reloading the browser document. Validation, CSRF protection, certificate deletion confirmation, browser Back/Forward, and PDF downloads are preserved. Lists receive background updates every five seconds, incoming traffic every three seconds, and server resources every three seconds; navigation stops the previous view's polling. Edit and upload fields are not replaced by background updates. Django admin and external links use normal navigation.
 
 The optional browser regression test uses an isolated Django test database, mocks DNS and NGINX operations, and requires Google Chrome and Playwright (`python -m pip install playwright`). Run `python manage.py test tests.browser_navigation`. Runtime deployments do not need Playwright.

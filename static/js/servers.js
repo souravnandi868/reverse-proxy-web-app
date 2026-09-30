@@ -117,7 +117,7 @@
     }
     async function poll() {
       if (stopped) return;
-      if (document.hidden) { timer = window.setTimeout(poll, 10000); return; }
+      if (document.hidden) { timer = window.setTimeout(poll, 3000); return; }
       try {
         const response = await fetch(root.dataset.url, {cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)])});
         if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error();
@@ -133,7 +133,7 @@
           const badge = card.querySelector('.server-state');
           badge.classList.remove('live'); badge.textContent = 'Updates unavailable';
         });
-      } finally { if (!stopped) timer = window.setTimeout(poll, 10000); }
+      } finally { if (!stopped) timer = window.setTimeout(poll, 3000); }
     }
     poll();
   }

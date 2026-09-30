@@ -42,14 +42,14 @@ for (const [script, delay] of [['traffic.js', 3000], ['live-pages.js', 5000]]) {
   });
 }
 
-test('resource polling schedules 10 seconds only after a request finishes', async () => {
+test('resource polling schedules 3 seconds only after a request finishes', async () => {
   const h = harness('servers.js');
   assert.equal(h.requests.length, 1);
   assert.equal(h.timers.length, 0);
   h.requests[0].resolve({ok: true, headers: {get: () => 'application/json'}, json: async () => ({servers: []})});
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.timers.length, 1);
-  assert.equal(h.timers[0].delay, 10000);
+  assert.equal(h.timers[0].delay, 3000);
   h.handlers['app:before-render']();
   h.timers[0].fn();
   assert.equal(h.requests.length, 1);

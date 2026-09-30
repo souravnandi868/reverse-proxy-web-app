@@ -33,10 +33,10 @@ class MonitorIntervalTests(unittest.TestCase):
             sleep.assert_called_once_with(expected)
 
     def test_default_interval(self):
-        self.assert_interval(None, 10)
+        self.assert_interval(None, 3)
 
     def test_configured_interval(self):
-        for value in (10, 60, 3600):
+        for value in (3, 10, 60, 3600):
             with self.subTest(value=value):
                 self.assert_interval(str(value), value)
 
@@ -49,7 +49,7 @@ class MonitorIntervalTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as raised:
                 self.agent.main()
             self.assertEqual(str(raised.exception),
-                             "MONITOR_INTERVAL must be an integer between 10 and 3600 seconds.")
+                             "MONITOR_INTERVAL must be an integer between 3 and 3600 seconds.")
             self.assertNotIn(self.env["MONITOR_TOKEN"], str(raised.exception))
             self.agent.psutil.net_io_counters.assert_not_called()
             traffic.assert_not_called()
@@ -57,7 +57,7 @@ class MonitorIntervalTests(unittest.TestCase):
             sleep.assert_not_called()
 
     def test_below_minimum(self):
-        for value in ("9", "0", "-1"):
+        for value in ("2", "0", "-1"):
             with self.subTest(value=value):
                 self.assert_invalid(value)
 

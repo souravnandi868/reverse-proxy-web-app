@@ -4,7 +4,7 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'css/servers.css' %}">{% endblock %}
 {% block content %}
 <section id="resource-monitor" data-url="{% url 'server_metrics' %}">
-  <div class="panel monitor-toolbar"><div><h2>Reverse proxy host resources</h2><p>CPU, RAM, storage and network usage of the NGINX server itself. Updates every 10 seconds. Graphs show the latest 360 readings (about one hour at the default reporting interval), collected even when this page is closed.</p></div><span id="monitor-status" role="status">Connecting…</span></div>
+  <div class="panel monitor-toolbar"><div><h2>Reverse proxy host resources</h2><p>CPU, RAM, storage and network usage of the NGINX server itself. Updates every 3 seconds. Graphs show the latest 360 readings (about 18 minutes at the default reporting interval), collected even when this page is closed.</p></div><span id="monitor-status" role="status">Connecting…</span></div>
   <div id="server-cards"></div>
   <noscript><p>Enable JavaScript to display live resource graphs.</p></noscript>
 </section>
