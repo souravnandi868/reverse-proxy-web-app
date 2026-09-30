@@ -55,7 +55,8 @@
     window.appBusy = true;
     // Stop background reads so they cannot overwrite action results or consume messages.
     document.dispatchEvent(new Event('app:before-render'));
-    notice(posting ? 'Saving changes…' : 'Loading…');
+    if (posting) notice('Saving changes…');
+    else document.getElementById('navigation-status')?.remove();
     document.body.setAttribute('aria-busy', 'true');
     let rendered = false;
     try {
