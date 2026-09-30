@@ -38,6 +38,17 @@ class TrafficReaderTests(TestCase):
         self.assertEqual(TrafficEvent.objects.count(), 2)
         self.assertNotIn("must-not-be-stored", str(list(TrafficEvent.objects.values())))
 
+    def test_usage_fields_and_timestamp_are_preserved(self):
+        self.path.write_text(json.dumps({"time": "2026-10-01T09:00:00+05:30",
+            "destination_fqdn": "SITE.EXAMPLE", "received_bytes": 123,
+            "sent_bytes": 456, "request_time": .2, "authorization": "secret"}) + "\n")
+        self.reader.poll()
+        event = TrafficEvent.objects.get()
+        self.assertEqual(event.occurred_at.isoformat(), "2026-10-01T03:30:00+00:00")
+        self.assertEqual(event.data["received_bytes"], 123)
+        self.assertEqual(event.data["sent_bytes"], 456)
+        self.assertNotIn("authorization", event.data)
+
     def test_command_enforces_one_worker_and_releases_lock(self):
         lock = self.root / "collector.lock"
         with collector_lock(lock):

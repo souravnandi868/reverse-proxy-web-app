@@ -11,6 +11,7 @@ from datetime import timedelta
 
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from .models import TrafficCursor, TrafficEvent
 
@@ -23,7 +24,8 @@ class TrafficReader:
     HISTORY_EVENTS = 100_000
     BUFFER_EVENTS = 1000
     FIELDS = {"time", "source_ip", "destination_fqdn", "destination_server",
-              "request", "status", "request_time", "bytes", "user_agent"}
+              "request", "status", "request_time", "bytes", "user_agent",
+              "received_bytes", "sent_bytes"}
 
     def __init__(self, directory):
         self.directory = Path(directory)
@@ -76,7 +78,13 @@ class TrafficReader:
                      and not (isinstance(value, float) and not math.isfinite(value))}
             domain = str(entry.get("destination_fqdn", "")).lower().rstrip(".")[:253]
             entry["log_file"] = name
-            records.append(TrafficEvent(domain=domain, data=entry))
+            try:
+                occurred_at = parse_datetime(str(entry.get("time", "")))
+            except ValueError:
+                occurred_at = None
+            if occurred_at is not None and timezone.is_naive(occurred_at):
+                occurred_at = None  # Do not invent a timezone for malformed log entries.
+            records.append(TrafficEvent(domain=domain, data=entry, occurred_at=occurred_at))
         cursor.offset = offset
         handle.seek(max(0, offset - 64))
         cursor.anchor = self._read(handle, min(offset, 64))

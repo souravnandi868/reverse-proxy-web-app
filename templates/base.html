@@ -20,6 +20,7 @@
       <a href="{% url 'certificates' %}" class="nav-link"><span>⬟</span>SSL Certificates</a>
       <a href="{% url 'servers' %}" class="nav-link {% if request.resolver_match.url_name == 'servers' %}active{% endif %}"><span>▦</span>NGINX Server</a>
       <a href="{% url 'audit' %}" class="nav-link"><span>▣</span>Incoming Traffic</a>
+      <a href="{% url 'website_usage' %}" class="nav-link {% if request.resolver_match.url_name == 'website_usage' %}active{% endif %}"><span>?</span>Website Usage</a>
       <a href="/admin/" class="nav-link"><span>⚙</span>Settings</a>
     </nav>
     <div class="sidebar-foot"><strong>Kolkata Police</strong><span>IT Infrastructure</span><small>Secure Systems<br>Safer Citizens</small></div>
@@ -36,7 +37,8 @@
 <script src="{% static 'js/live-pages.js' %}?v=2" defer></script>
 <script src="{% static 'js/search.js' %}" defer></script>
 <script src="{% static 'js/account.js' %}" defer></script>
-<script src="{% static 'js/navigation.js' %}" defer></script>
+<script src="{% static 'js/usage.js' %}?v=1" defer></script>
+<script src="{% static 'js/navigation.js' %}?v=2" defer></script>
 
 </body>
 </html>

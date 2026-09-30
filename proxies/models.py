@@ -95,6 +95,7 @@ class TrafficCursor(models.Model):
 
 
 class TrafficEvent(models.Model):
+    occurred_at = models.DateTimeField(null=True, blank=True, db_index=True)
     domain = models.CharField(max_length=253, db_index=True)
     data = models.JSONField()
 
