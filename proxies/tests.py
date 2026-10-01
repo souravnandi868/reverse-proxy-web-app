@@ -34,7 +34,7 @@ class ProxyValidationTests(TestCase):
         self.client.force_login(user)
         dashboard = self.client.get("/")
         self.assertContains(dashboard, 'href="/proxies/"')
-        self.assertContains(dashboard, 'href="/domains/"')
+        self.assertContains(dashboard, 'href="/usage/"')
         routes = self.client.get("/proxies/")
         self.assertTemplateUsed(routes, "proxies/proxy_list.html")
         self.assertContains(routes, "Add Reverse Proxy")

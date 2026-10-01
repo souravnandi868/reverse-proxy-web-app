@@ -37,7 +37,16 @@ def render_proxy_config(proxy):
         )
     log_path = f"/var/log/nginx/proxy-admin/{proxy.domain_name}.access.log"
     error_log_path = f"/var/log/nginx/proxy-admin/{proxy.domain_name}.error.log"
-    return f"""# Managed by NGINX Proxy Admin. Do not edit manually.\nserver {{\n    listen {listen};\n    server_name {proxy.domain_name};\n    access_log {log_path} proxy_admin;\n    error_log {error_log_path} warn;\n{ssl_block}    location / {{\n        proxy_pass {proxy.backend_protocol}://{proxy.backend_private_ip}:{proxy.backend_port};\n{upstream_tls}        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_connect_timeout 5s;\n{connection_settings}    }}\n}}\n"""
+    captive_locations = ""
+    captive_preamble = ""
+    log_format = "proxy_admin"
+    if proxy.captive_portal_enabled:
+        from .captive_nginx import locations, preamble
+        captive_preamble, cookie_variable, log_format = preamble(proxy)
+        captive_locations = f'    if ($host != {proxy.domain_name}) {{ return 444; }}\n' + locations(proxy)
+        connection_settings += f"        proxy_set_header Cookie ${cookie_variable};\n"
+        connection_settings += "        auth_request /_captive_auth;\n        error_page 401 = @captive_login;\n"
+    return f"""# Managed by NGINX Proxy Admin. Do not edit manually.\n{captive_preamble}server {{\n    listen {listen};\n    server_name {proxy.domain_name};\n    access_log {log_path} {log_format};\n    error_log {error_log_path} warn;\n{ssl_block}{captive_locations}    location / {{\n        proxy_pass {proxy.backend_protocol}://{proxy.backend_private_ip}:{proxy.backend_port};\n{upstream_tls}        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_connect_timeout 5s;\n{connection_settings}    }}\n}}\n"""
 
 
 def traffic_events(fqdn=""):

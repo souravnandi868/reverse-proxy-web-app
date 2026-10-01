@@ -152,11 +152,15 @@ class TrafficReaderTests(TestCase):
     def test_http_pages_and_export_never_discover_or_read_logs(self):
         self.append()
         self.reader.poll()
+        # Export now requires a timestamped event and an explicit date range.
+        from django.utils.dateparse import parse_datetime
+        TrafficEvent.objects.update(occurred_at=parse_datetime("2026-10-01T09:00:00+05:30"))
         self.client.force_login(get_user_model().objects.create_user("reader", is_staff=True))
         with patch.object(Path, "glob", side_effect=AssertionError("HTTP scanned logs")), \
                 patch.object(TrafficReader, "poll", side_effect=AssertionError("HTTP ingested logs")):
             for url in ("/", "/audit/", "/audit/rows/", "/audit/export.xlsx"):
-                response = self.client.get(url)
+                params = {"start": "2026-10-01T00:00", "end": "2026-10-02T00:00"} if url.endswith(".xlsx") else {}
+                response = self.client.get(url, params)
                 self.assertEqual(response.status_code, 200)
                 self.assertNotIn(b"must-not-be-stored", response.content)
 

@@ -14,6 +14,15 @@ from proxies.traffic_reader import TrafficReader
 
 
 class NavigationBrowserTests(StaticLiveServerTestCase):
+    def fill_image_code(self, page):
+        # The console now requires the displayed image code on password login.
+        import base64
+        from xml.etree import ElementTree
+        source = page.get_by_alt_text("Image code with six case-sensitive letters and digits").get_attribute("src")
+        svg = ElementTree.fromstring(base64.b64decode(source.split(",", 1)[1]))
+        answer = "".join(node.text for node in svg.findall("{http://www.w3.org/2000/svg}text"))
+        page.locator('[name="captcha"]').fill(answer)
+
     def test_operations_and_redirects_keep_position(self):
         from django.conf import settings
         user = get_user_model().objects.create_superuser("action-admin", password="test-password")
@@ -195,6 +204,7 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
             page.evaluate("window.documentToken = 'unchanged'")
             page.locator('[name="username"]').fill("browser-admin")
             page.locator('[name="password"]').fill("test-password")
+            self.fill_image_code(page)
             page.get_by_role("button", name="Sign in", exact=True).click()
             expect(page.locator(".stats")).to_be_visible()
             page.get_by_role("link", name="+ Add Reverse Proxy").click()
@@ -268,10 +278,18 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
             browser.close()
 
     def test_search_and_switch_on_loaded_navigated_and_live_pages(self):
+        from django.utils import timezone
+        from proxies.models import TrafficEvent
+        apply_mock = patch("proxies.views.apply_proxy", return_value=SimpleNamespace(ok=True, message="Applied"))
+        apply_mock.start()
+        self.addCleanup(apply_mock.stop)
         user = get_user_model().objects.create_superuser("search-admin", password="test-password")
         domains = ["alpha.find.example.org", "zulu.find.example.org"] + [
             f"middle-{index:02d}.example.org" for index in range(14)
         ]
+        now = timezone.now()
+        TrafficEvent.objects.create(domain=domains[0], occurred_at=now, data={
+            "time": now.isoformat(), "status": 200, "received_bytes": 10, "sent_bytes": 20})
         ProxyConfig.objects.bulk_create([
             ProxyConfig(domain_name=domain, backend_private_ip="10.0.0.5", backend_port=8080,
                         created_by=user, updated_by=user)
@@ -285,6 +303,7 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
             page.goto(self.live_server_url + "/login/?next=/proxies/")
             page.locator('[name="username"]').fill("search-admin")
             page.locator('[name="password"]').fill("test-password")
+            self.fill_image_code(page)
             page.get_by_role("button", name="Sign in", exact=True).click()
             expect(page.locator("#proxies")).to_contain_text("alpha.find.example.org")
             # Exercise initialization on a full authenticated load before testing app navigation.
@@ -295,7 +314,7 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
             toggle = first.get_by_role("switch")
             expect(toggle).to_have_attribute("aria-checked", "true")
             expect(toggle).to_have_css("background-color", "rgb(22, 163, 74)")
-            expect(toggle.locator(".proxy-switch-thumb")).to_have_css("transform", "matrix(1, 0, 0, 1, 20, 0)")
+            expect(toggle.locator(".proxy-switch-thumb")).to_have_css("transform", "matrix(1, 0, 0, 1, 16, 0)")
             toggle.click()
             expect(toggle).to_have_attribute("aria-checked", "false")
             expect(toggle).to_have_css("background-color", "rgb(220, 38, 38)")
@@ -304,6 +323,11 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
             toggle.click()
             expect(toggle).to_have_attribute("aria-checked", "true")
             expect(first).to_contain_text("Online")
+
+            # Toggle actions return to the dashboard, which also lists domains in
+            # its overview panel. Return to the table-only page before counting.
+            page.locator('.sidebar a[href="/proxies/"]').click()
+            expect(page.locator("h1")).to_have_text("Reverse Proxies")
 
             search = page.get_by_role("searchbox", name="Search this page", exact=True)
             status = page.locator("#search-status")

@@ -46,6 +46,7 @@ class ProxyConfig(models.Model):
     certificate_bundle = models.ForeignKey(CertificateBundle, null=True, blank=True, on_delete=models.PROTECT)
     enabled = models.BooleanField(default=True)
     websocket_enabled = models.BooleanField("Enable WebSocket support", default=False)
+    captive_portal_enabled = models.BooleanField("Enable OTP captive portal", default=False)
     nat_notes = models.CharField(max_length=500, blank=True)
     firewall_notes = models.CharField(max_length=500, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="proxy_configs_created")
@@ -119,3 +120,5 @@ class TrafficEvent(models.Model):
         ordering = ["-id"]
         indexes = [models.Index(fields=["domain", "-id"], name="traffic_domain_id"),
                    models.Index(fields=["domain", "occurred_at"], name="traffic_domain_time")]
+
+from .captive_models import CaptivePortalUser, CaptiveOTP, CaptiveSession, CaptiveRateLimit, CaptiveAudit

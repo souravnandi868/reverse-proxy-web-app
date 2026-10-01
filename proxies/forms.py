@@ -51,7 +51,7 @@ def certificate_valid_until(uploaded):
 class ProxyConfigForm(forms.ModelForm):
     class Meta:
         model = ProxyConfig
-        fields = ["domain_name", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "websocket_enabled", "enabled"]
+        fields = ["domain_name", "backend_private_ip", "backend_port", "incoming_protocol", "backend_protocol", "certificate_bundle", "nat_notes", "firewall_notes", "websocket_enabled", "captive_portal_enabled", "enabled"]
         help_texts = {
             "domain_name": "A public IP is resolved automatically when public DNS is available. You can save the route before DNS is published; the scheduled refresh checks every 5 minutes.",
         }
@@ -92,6 +92,8 @@ class ProxyConfigForm(forms.ModelForm):
                 cleaned["public_ip"] = self._resolved_public_ip
         if cleaned.get("incoming_protocol") == "https" and not cleaned.get("certificate_bundle"):
             self.add_error("certificate_bundle", "HTTPS proxies require an active certificate bundle.")
+        if cleaned.get("captive_portal_enabled") and cleaned.get("incoming_protocol") != "https":
+            self.add_error("incoming_protocol", "The captive portal requires HTTPS for its secure cookie.")
         return cleaned
 
     def save(self, commit=True):

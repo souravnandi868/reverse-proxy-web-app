@@ -17,6 +17,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "proxies.captive.CaptiveIngressMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -70,3 +71,21 @@ X_FRAME_OPTIONS = "DENY"
 SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "false").lower() == "true"
 SESSION_COOKIE_SECURE = SECURE_SSL_REDIRECT
 CSRF_COOKIE_SECURE = SECURE_SSL_REDIRECT
+
+# Captive ingress must only be reachable by the local NGINX service.
+CAPTIVE_ADMIN_UPSTREAM = os.environ.get("CAPTIVE_ADMIN_UPSTREAM", "http://127.0.0.1:8000")
+CAPTIVE_SMS_BACKEND = os.environ.get("CAPTIVE_SMS_BACKEND", "disabled")
+CAPTIVE_SMS_API_URL = os.environ.get("CAPTIVE_SMS_API_URL", "")
+CAPTIVE_SMS_API_TOKEN = os.environ.get("CAPTIVE_SMS_API_TOKEN", "")
+CAPTIVE_SMS_SENDER_ID = os.environ.get("CAPTIVE_SMS_SENDER_ID", "")
+CAPTIVE_SMS_TEMPLATE_ID = os.environ.get("CAPTIVE_SMS_TEMPLATE_ID", "")
+CAPTIVE_SMS_HTTP_ADAPTER = os.environ.get("CAPTIVE_SMS_HTTP_ADAPTER", "proxies.captive_sms.GatewayAdapter")
+CAPTIVE_OTP_EXPIRY_SECONDS = int(os.environ.get("CAPTIVE_OTP_EXPIRY_SECONDS", "300"))
+CAPTIVE_SESSION_SECONDS = int(os.environ.get("CAPTIVE_SESSION_SECONDS", "28800"))
+CAPTIVE_RESEND_SECONDS = int(os.environ.get("CAPTIVE_RESEND_SECONDS", "60"))
+CAPTIVE_MAX_ATTEMPTS = int(os.environ.get("CAPTIVE_MAX_ATTEMPTS", "5"))
+CAPTIVE_DESTINATION_SEND_LIMIT = int(os.environ.get("CAPTIVE_DESTINATION_SEND_LIMIT", "5"))
+CAPTIVE_IP_SEND_LIMIT = int(os.environ.get("CAPTIVE_IP_SEND_LIMIT", "20"))
+CAPTIVE_USER_SEND_LIMIT = int(os.environ.get("CAPTIVE_USER_SEND_LIMIT", "10"))
+CAPTIVE_FQDN_SEND_LIMIT = int(os.environ.get("CAPTIVE_FQDN_SEND_LIMIT", "1000"))
+CAPTIVE_VERIFY_IP_LIMIT = int(os.environ.get("CAPTIVE_VERIFY_IP_LIMIT", "100"))

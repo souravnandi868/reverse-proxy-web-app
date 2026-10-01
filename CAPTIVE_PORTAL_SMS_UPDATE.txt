@@ -1,0 +1,22 @@
+CAPTIVE PORTAL SMS UPDATE
+
+What changed
+- Captive users must have both a valid Indian mobile number and email address.
+- Users may identify with either value, but OTP is always sent by SMS to their registered mobile.
+- Email OTP and captive SMTP delivery were removed.
+- OTP verification is tied to the user identifier and FQDN. Contact changes revoke pending OTPs and active sessions.
+- The captive login page now shows one identifier field and a back/change-identifier link.
+- Migration 0014 disables existing active accounts missing either contact so an administrator can update them before re-enabling.
+- A synthetic test phone number is used only in tests; SMS sending is mocked.
+
+Impact
+- Existing routes without captive portal enabled are unchanged.
+- Existing captive users with incomplete contact details will be disabled by migration 0014. Review and update those records before restoring access.
+- Apply generated NGINX configuration for captive-enabled routes after deployment. The existing NGINX helper still validates with nginx -t before reload.
+- Run `python manage.py migrate --noinput` during deployment.
+- Full verification passed: Django 152 tests, JavaScript 16 tests, migration consistency check, and Django system check.
+
+SMS gateway status
+- Endpoint: https://api.kolkatapolice.org/crimebabuapp/Api_sms/send_sms
+- OTP template supplied: {#var#} is your OTP to access the (#wev app name#) in your device - Kolkata Police
+- Production sending remains fail-closed until the gateway's HTTP method, required parameter names/locations, authentication format, and accepted-success response are confirmed. Confirm the template placeholder spelling and template ID with the gateway owner.

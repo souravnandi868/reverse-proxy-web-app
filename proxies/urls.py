@@ -1,8 +1,14 @@
 from django.urls import path
 from . import views
 from . import monitoring, account, usage
+from . import captive_admin
 
 urlpatterns = [
+    path("authorized-users/", captive_admin.users, name="captive_users"),
+    path("authorized-users/new/", captive_admin.user_edit, name="captive_user_add"),
+    path("authorized-users/<int:pk>/edit/", captive_admin.user_edit, name="captive_user_edit"),
+    path("authorized-users/<int:pk>/<str:action>/", captive_admin.user_action, name="captive_user_action"),
+    path("captive-audit/", captive_admin.audit_page, name="captive_audit"),
     path("usage/", usage.page, name="website_usage"),
     path("usage/metrics/", usage.metrics, name="website_usage_metrics"),
     path("account/", account.information, name="account_information"),

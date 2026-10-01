@@ -233,3 +233,219 @@ The staff-only **Website Usage** page (`/usage/`) compares FQDNs and shows their
 The existing traffic collector supplies this page, independently of open browsers. Migration 0011 indexes request timestamps and backfills valid timezone-aware timestamps in retained records. The collector now preserves `received_bytes` and `sent_bytes` from the existing managed NGINX log format. Previously discarded byte fields cannot be recovered by this migration: incomplete byte totals display Unavailable until new records cover the selected window. No body-byte fallback is used. Empty or missing measurements are not proof that a server is idle; collector delays, downtime and the 100,000-request retention limit can reduce coverage. These charts do not measure CPU, RAM or disk per FQDN/backend; that requires separate monitoring.
 
 Deploy the full updated application, run `.venv/bin/python manage.py migrate` and `.venv/bin/python manage.py collectstatic --noinput`, restart the Django service, and restart `proxy-traffic-collector` on the collector host after deploying its updated code there. Use Ctrl+Shift+R to load the new sidebar and scripts. No resource-agent change is required for this page. Existing installations already using the managed byte logging format do not require an NGINX reload.
+# Optional OTP captive portal
+
+Each HTTPS proxy has an **Enable OTP captive portal** checkbox, disabled by default.
+Saving stages the change; use the existing **Apply** action to activate it. Routes
+without the checkbox retain their previous generated NGINX configuration byte for
+byte. Captive routes retain their certificates, upstream headers, timeouts and
+optional WebSocket configuration. HTTP captive routes are rejected because the
+required Secure cookie needs HTTPS.
+
+## Authorized users and permissions
+
+Use **Authorized Users** in the console (also linked from Django admin) to register,
+search, edit, enable/disable, assign FQDNs or confirm deletion. Name, section and rank
+are required. Both mobile number and email address are mandatory. Indian mobile
+numbers are normalized to `+91` plus ten digits; email addresses are normalized
+to lowercase. Both are unique. Users may identify with either registered value,
+but OTP delivery always goes to the registered mobile by SMS. Explicit **all
+captive-enabled FQDNs** access is separate from an empty assignment list; an
+empty list grants no access. Self-registration is not enabled.
+
+Operators must be authenticated staff and have the relevant `proxies` permissions:
+`view_captiveportaluser`, `add_captiveportaluser`, `change_captiveportaluser`,
+`toggle_captiveportaluser`, `delete_captiveportaluser`, and
+`assign_captiveportaluser`. Assign `view_captiveaudit` to view/search captive audit
+events. Editing permission alone cannot enable users or change their assignments.
+Superusers have all permissions. Grant permissions with the existing Django admin
+user/group management. User deletion requires confirmation, clears contact details,
+soft-deletes the record and retains security audit relationships. Disable, contact
+changes and deletion revoke sessions and outstanding OTPs; removing assignments
+revokes access for those FQDNs. Re-enabling never restores old sessions.
+
+## Production environment
+
+Set these in the existing service environment, never in source control. No new
+production Python dependencies are required.
+
+| Variable | Required value / default |
+| --- | --- |
+| `DJANGO_SECRET_KEY` | A unique high-entropy production secret shared by this application's workers; never the development default |
+| `DJANGO_DEBUG` | `false` in production |
+| `DJANGO_ALLOWED_HOSTS` | Explicit console hostname **and every captive FQDN**, comma-separated; no wildcard |
+| `CAPTIVE_ADMIN_UPSTREAM` | Private Django listener; default `http://127.0.0.1:8000`; only loopback HTTP URLs are accepted |
+| `CAPTIVE_SMS_BACKEND` | `http` in production; default `disabled` fails closed; `development` silently discards delivery and requires DEBUG |
+| `CAPTIVE_SMS_API_URL` | `https://api.kolkatapolice.org/crimebabuapp/Api_sms/send_sms` |
+| `CAPTIVE_SMS_API_TOKEN` | Organization's gateway credential, consumed by its adapter |
+| `CAPTIVE_SMS_SENDER_ID` | Organization's registered sender ID |
+| `CAPTIVE_SMS_TEMPLATE_ID` | Organization's approved template ID |
+| `CAPTIVE_SMS_HTTP_ADAPTER` | Dotted class path implementing `GatewayAdapter`; default base class intentionally refuses delivery |
+| `CAPTIVE_OTP_EXPIRY_SECONDS` | `300` (5 minutes) |
+| `CAPTIVE_SESSION_SECONDS` | `28800` (8 hours, absolute expiry) |
+| `CAPTIVE_RESEND_SECONDS` | `60` |
+| `CAPTIVE_MAX_ATTEMPTS` | `5` per issued OTP |
+| `CAPTIVE_DESTINATION_SEND_LIMIT` | `5` per hour per registered mobile number |
+| `CAPTIVE_IP_SEND_LIMIT` | `20` per hour, including unknown destinations |
+| `CAPTIVE_USER_SEND_LIMIT` | `10` per hour per authorized user account |
+| `CAPTIVE_FQDN_SEND_LIMIT` | `1000` per hour |
+| `CAPTIVE_VERIFY_IP_LIMIT` | `100` verification attempts per hour |
+Email is only an alternative login identifier; captive authentication never sends
+email. The development SMS provider never contacts a gateway or records the OTP;
+tests mock SMS delivery.
+
+### SMS adapter: information still required
+
+The HTTP transport is implemented in `proxies/captive_sms.py`. The supplied gateway
+endpoint is `https://api.kolkatapolice.org/crimebabuapp/Api_sms/send_sms`. The
+supplied OTP text template is `{#var#} is your OTP to access the (#wev app name#)
+in your device - Kolkata Police`; confirm the exact placeholder spelling and
+registered template ID with the gateway owner. **Do not enable production SMS until
+the gateway request contract is supplied and tested.** Opening the endpoint without
+its required fields returns `Required field missing`; its method, field names,
+authentication format and accepted response are not documented here. The base
+adapter deliberately raises an error rather than guessing. Implement these two
+small methods in the configured adapter class:
+
+* `build_request(path, mobile, otp, token, sender_id, template_id)` receives keyword
+  arguments and returns `(HTTP_method, path_and_query, headers_dict, body_bytes)`.
+  `path` initially contains the configured endpoint's path/query. The adapter can
+  encode dynamic query parameters for GET gateways or a body for POST gateways;
+  it cannot change the configured HTTPS origin.
+* `accepted(status, headers, body)` returns true only when the gateway's documented
+  response confirms acceptance; an HTTP 200 alone may represent rejection.
+
+Supply the exact endpoint, HTTP method, content type, recipient/country-code format,
+payload parameter names, authentication header/body format, sender/template and DLT
+requirements, OTP template substitution rules, acceptance/error response samples,
+and any IP allowlisting requirements. These define the **exact request format to
+adapt**; a sample request with redacted credentials is sufficient. URLs and secrets
+remain environment configuration. The transport verifies HTTPS, uses 5-second
+connect and 10-second response timeouts, limits responses to 64 KiB, and follows no
+redirects. Failures consume the challenge and cannot establish a session. Gateway
+exception messages, request bodies and response bodies are not logged. Disable
+payload logging on the gateway side too.
+
+## NGINX and session flow
+
+NGINX must include `--with-http_auth_request_module` (`nginx -V`). As documented in
+the [NGINX auth_request reference](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html),
+a successful subrequest permits access and a 401/403 denies access.
+
+The generator reserves exact same-FQDN paths `/_captive/login/`, `send-otp/`,
+`verify-otp/`, `logout/`, and `status/`. They go to the loopback Django listener and
+bypass backend authentication. All other `/_captive/` paths are rejected. An
+`internal` `/_captive_auth` location calls Django's lightweight session check.
+An internal named error handler asks Django to return either a safely encoded
+local login redirect or a JSON 401 when Accept requests application/json. Django
+rejects external, protocol-relative, backslash, control-character and portal-loop
+return destinations. Paths and query strings survive successful login. NGINX checks
+the WebSocket handshake before forwarding an Upgrade; it cannot revoke an already
+established WebSocket stream until that connection closes.
+
+NGINX supplies a per-FQDN keyed ingress header and overwrites the client-IP header;
+Django rejects unsigned ingress, forged/unlisted hosts and disabled/non-HTTPS
+routes. Keep Gunicorn bound to loopback and block direct public access. The console
+NGINX vhost must not expose `/_captive/` paths or forward arbitrary captive ingress
+headers. Do not enable general `USE_X_FORWARDED_HOST` or trust arbitrary forwarded
+client-IP headers. If a trusted load balancer precedes NGINX, configure NGINX real-IP
+trust explicitly so `$remote_addr` reflects the client, not a spoofable header.
+
+The ingress key is derived from `DJANGO_SECRET_KEY`; generated configs and backups
+must remain private. After rotating that secret, regenerate/apply all captive
+routes together with restarting Django workers. Existing challenges and sessions
+become invalid. Ensure every worker/replica uses the same secret and an authoritative
+session/rate-limit database. SQLite works across workers on one host; asynchronously
+copied SQLite files are not a shared rate-limit or revocation store across active
+hosts. Existing backup/replication jobs are unchanged; do not enable active-active
+captive ingress against independently writable database copies.
+
+OTP challenges contain keyed SHA-256 hashes, never plaintext codes. Six digits are
+generated with Python `secrets`; comparison is constant-time, attempts are reserved
+atomically, and successful verification consumes the challenge. New codes consume
+previous unused codes for that user/FQDN/channel. Independent database counters
+enforce the configurable send and verification limits across Gunicorn workers.
+Public send responses are generic for unknown, disabled, deleted and unassigned
+contacts. Only the selected registered channel receives delivery.
+
+Sessions use a new random identifier after verification, store only its keyed hash,
+and bind to the user and proxy. Every check revalidates current authorization and
+absolute expiry. The host-only `__Host-captive_session` cookie has Secure, HttpOnly,
+SameSite=Lax, Path=/ and no Domain. IP and User-Agent are audit context, not access
+credentials. Logout is a CSRF-protected POST that revokes the server record and
+expires the cookie. Captive pages and auth responses use no-store. The session
+cookie is stripped before forwarding to the backend, while backend cookies remain.
+
+Captive route traffic logs retain the collector's byte/timing fields but omit query
+strings, cookies, authorization and user-agent fields. Portal/auth locations have
+access logging disabled. Existing non-captive log formats are unchanged. Configure
+the Django/Gunicorn frontend and observability agents to avoid request bodies,
+cookies and credential headers; disable access logging for captive endpoints. Keep
+security audits under the organization's retention policy; no automatic audit
+deletion is performed by this feature.
+
+See `deploy/captive-example.conf` for a full generated configuration with a redacted
+ingress key. The same privileged operations service writes the configuration,
+executes `nginx -t`, and reloads only on success. Validation failure restores the
+previous file without reload. This feature does not restart NGINX.
+
+## Offline deployment and rollback
+
+1. Back up the application database, private media and current managed NGINX files.
+   Transfer the reviewed source, adapter and existing offline dependency wheelhouse
+   to the offline host. Install from the wheelhouse using the deployment's existing
+   virtualenv (`pip install --no-index --find-links /path/to/wheels -r requirements.txt`).
+2. Provision the environment above in the existing private service environment.
+   Ensure every captive FQDN has a certificate and is explicitly allowed by Django.
+   Confirm the existing NGINX build includes auth_request and the local Django
+   listener is reachable. SMS/SMTP still require access to the organization's
+   approved SMS gateway; an offline package install does not itself provide
+   message delivery.
+3. With the existing Django service account/environment, run:
+
+   ```sh
+   python manage.py migrate --noinput
+   python manage.py check
+   python manage.py collectstatic --noinput
+   ```
+
+   Migration `0013_captive_portal` adds the false-default route flag, captive
+   models, assignments and constraints. Migration `0014_captive_sms_identifier`
+   disables legacy authorized users missing either required contact. Existing
+   routes remain non-captive. Use the deployment's existing graceful Django
+   code-reload procedure.
+4. Grant administrator permissions, register users, assign FQDNs, configure/test
+   the real gateway adapter, then enable and Apply one pilot route. Verify a fresh
+   browser session, email/SMS, logout, JSON access and WebSocket handshake before
+   rolling out the remaining routes. Apply uses the existing privileged socket.
+   Run deployment validation on the actual Linux NGINX build as well.
+5. To roll back portal behavior, clear its checkbox and Apply each affected route.
+   This deliberately restores unrestricted backend access on those routes, so
+   coordinate the access-policy change. For a full code rollback, restore/reapply
+   the pre-feature NGINX backups before removing code that serves auth endpoints.
+   Retain migration 0013/data for security history where possible. Reversing it
+   (`python manage.py migrate proxies 0012`) permanently drops captive users,
+   assignments, sessions and audits; do so only after an approved database backup
+   and retention decision. Validation failures automatically restore the old file;
+   investigate helper-reported restoration failures before proceeding.
+
+## Captive verification
+
+```sh
+python manage.py test --noinput
+node --test tests/*.test.cjs
+python tests/nginx_captive_integration.py /path/to/nginx
+# With Playwright and Chrome installed, also test the responsive portal in Chrome:
+python tests/nginx_captive_integration.py /path/to/nginx --browser
+# Optional existing UI integration suite: install Playwright and Chrome first.
+python manage.py test tests.browser_navigation --noinput
+```
+
+The NGINX smoke test uses an isolated database, temporary TLS certificate, loopback
+servers and mocked delivery. It validates generated syntax and exercises CSRF,
+OTP, redirects/query preservation, JSON 401, cookie stripping, internal locations,
+WebSocket Upgrade gating and logout. It does not contact a gateway or alter an
+installed NGINX service. The migration test upgrades existing data from 0012,
+checks the disabled default, disables legacy single-contact users, and verifies
+reversal. In a Windows sandbox that
+cannot spawn Node workers, use `node --test --test-isolation=none tests/*.test.cjs`.

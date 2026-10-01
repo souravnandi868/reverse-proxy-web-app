@@ -5,6 +5,9 @@ db.sqlite3
 private_media/
 staticfiles/
 .env
+.test-tmp/
+.test-tools/
+*-test-results.txt
 .traffic-collector.lock
 design-preview/
 reverse-proxy-release-*.bundle
