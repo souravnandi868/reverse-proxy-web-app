@@ -418,7 +418,8 @@ class SMSProviderTests(TestCase):
             HTTPSMS().send("+919876543210", "123456")
             connection.assert_called_once_with("sms.example.test", None, timeout=5)
             connection.return_value.sock.settimeout.assert_called_once_with(10)
-            connection.return_value.request.assert_called_once_with("POST", "/send", body=b"adapter payload", headers={"Content-Type": "application/x-www-form-urlencoded"})
+            connection.return_value.request.assert_called_once_with("POST", "/send", body=b"adapter payload", headers={
+                "Content-Type": "application/x-www-form-urlencoded", "Connection": "close"})
             connection.return_value.close.assert_called_once()
 
     @override_settings(CAPTIVE_SMS_BACKEND="development", DEBUG=True)

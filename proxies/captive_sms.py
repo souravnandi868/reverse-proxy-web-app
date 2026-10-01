@@ -59,6 +59,7 @@ class HTTPSMS:
         try:
             conn.connect()
             conn.sock.settimeout(10)
+            headers = {**headers, "Connection": "close"}
             conn.request(method, path, body=body, headers=headers)
             response = conn.getresponse()
             content = response.read(65537)
