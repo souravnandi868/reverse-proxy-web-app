@@ -1,6 +1,7 @@
-"""SMS transport. The organization supplies the small gateway adapter contract."""
+"""SMS transport for the configured organization gateway."""
 import http.client
-from urllib.parse import urlsplit
+import json
+from urllib.parse import urlencode, urlsplit
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
@@ -8,19 +9,31 @@ from django.views.decorators.debug import sensitive_variables
 
 
 class GatewayAdapter:
-    """Implement using the gateway's actual specification, never a guessed schema."""
+    """Kolkata Police form-encoded SMS API adapter."""
 
-    def build_request(self, *, path, mobile, otp, token, sender_id, template_id):
-        """Return (method, path/query, headers dict, body bytes).
-
-        The configured HTTPS origin is fixed. Adapters may encode query parameters
-        for GET gateways or construct a JSON/form body for POST gateways.
-        """
-        raise ImproperlyConfigured("Configure CAPTIVE_SMS_HTTP_ADAPTER with the organization's gateway adapter.")
+    def build_request(self, *, path, mobile, otp):
+        """Return the provider's unauthenticated POST form request."""
+        if not mobile.startswith("+91") or len(mobile) != 13 or not mobile[3:].isdigit():
+            raise ImproperlyConfigured("SMS gateway requires a normalized Indian mobile number.")
+        if len(otp) != 6 or not otp.isdigit():
+            raise ImproperlyConfigured("SMS OTP must contain six digits.")
+        template = settings.CAPTIVE_SMS_MESSAGE_TEMPLATE
+        if template.count("{#var#}") != 1:
+            raise ImproperlyConfigured("SMS message template must contain exactly one {#var#} placeholder.")
+        message = template.replace("{#var#}", otp)
+        body = urlencode({"mobileno": mobile[3:], "message": message}).encode("ascii")
+        return "POST", path, {"Content-Type": "application/x-www-form-urlencoded"}, body
 
     def accepted(self, status, headers, body):
-        """Return True only for documented gateway acceptance (not merely HTTP 200)."""
-        raise ImproperlyConfigured("The gateway acceptance format must be implemented.")
+        """Require the observed gateway response: status 1 and message Success."""
+        if not 200 <= status < 300:
+            return False
+        try:
+            result = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        return (isinstance(result, dict) and str(result.get("status")) == "1"
+                and str(result.get("message", "")).strip().casefold() == "success")
 
 
 class DevelopmentSMS:
@@ -39,8 +52,7 @@ class HTTPSMS:
         adapter = import_string(settings.CAPTIVE_SMS_HTTP_ADAPTER)()
         method, path, headers, body = adapter.build_request(
             path=(url.path or "/") + ("?" + url.query if url.query else ""),
-            mobile=mobile, otp=otp, token=settings.CAPTIVE_SMS_API_TOKEN,
-            sender_id=settings.CAPTIVE_SMS_SENDER_ID, template_id=settings.CAPTIVE_SMS_TEMPLATE_ID)
+            mobile=mobile, otp=otp)
         if not isinstance(path, str) or not path.startswith("/") or path.startswith("//") or any(ord(c) < 32 for c in path):
             raise ImproperlyConfigured("Gateway adapter must return a local request path.")
         conn = http.client.HTTPSConnection(url.hostname, url.port, timeout=5)

@@ -18,5 +18,8 @@ Impact
 
 SMS gateway status
 - Endpoint: https://api.kolkatapolice.org/crimebabuapp/Api_sms/send_sms
-- OTP template supplied: {#var#} is your OTP to access the (#wev app name#) in your device - Kolkata Police
-- Production sending remains fail-closed until the gateway's HTTP method, required parameter names/locations, authentication format, and accepted-success response are confirmed. Confirm the template placeholder spelling and template ID with the gateway owner.
+- Request: unauthenticated HTTPS POST, application/x-www-form-urlencoded fields `mobileno` (10 digits) and `message`.
+- Template: {#var#} is your OTP to access the zimbra mail in your device - Kolkata Police
+- Confirmed success response: HTTP 200 with JSON status 1 and message Success. Status 0 is failure.
+- The adapter is implemented; no API token, sender ID or template ID is required by this endpoint.
+- One live test SMS was accepted. It was a direct provider test, not a Django login challenge.

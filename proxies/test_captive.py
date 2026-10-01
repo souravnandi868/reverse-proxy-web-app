@@ -387,25 +387,38 @@ class SMSProviderTests(TestCase):
         with self.assertRaises(ImproperlyConfigured):
             DevelopmentSMS().send("+919876543210", "123456")
 
-    @override_settings(CAPTIVE_SMS_API_URL="https://sms.example.test/send", CAPTIVE_SMS_HTTP_ADAPTER="proxies.captive_sms.GatewayAdapter")
-    def test_unconfigured_adapter_fails_closed(self):
-        from django.core.exceptions import ImproperlyConfigured
-        from .captive_sms import HTTPSMS
-        with self.assertRaises(ImproperlyConfigured):
-            HTTPSMS().send("+919876543210", "123456")
+    def test_gateway_adapter_uses_provider_form_fields_and_success_response(self):
+        import json
+        from urllib.parse import parse_qs
+        from .captive_sms import GatewayAdapter
 
-    @override_settings(CAPTIVE_SMS_API_URL="https://sms.example.test/send", CAPTIVE_SMS_API_TOKEN="test-token")
+        adapter = GatewayAdapter()
+        method, path, headers, body = adapter.build_request(
+            path="/crimebabuapp/Api_sms/send_sms", mobile="+918335852826", otp="123456")
+
+        self.assertEqual(method, "POST")
+        self.assertEqual(path, "/crimebabuapp/Api_sms/send_sms")
+        self.assertEqual(headers["Content-Type"], "application/x-www-form-urlencoded")
+        self.assertEqual(parse_qs(body.decode()), {
+            "mobileno": ["8335852826"],
+            "message": ["123456 is your OTP to access the zimbra mail in your device - Kolkata Police"],
+        })
+        self.assertTrue(adapter.accepted(200, {}, json.dumps({"status": 1, "message": "Success"}).encode()))
+        self.assertFalse(adapter.accepted(200, {}, json.dumps({"status": 0, "message": "Failed"}).encode()))
+        self.assertFalse(adapter.accepted(200, {}, b"not-json"))
+
+    @override_settings(CAPTIVE_SMS_API_URL="https://sms.example.test/send")
     def test_transport_uses_adapter_and_both_timeouts(self):
         from .captive_sms import HTTPSMS
         with patch("proxies.captive_sms.import_string") as load, patch("proxies.captive_sms.http.client.HTTPSConnection") as connection:
             adapter = load.return_value.return_value
-            adapter.build_request.return_value = ("POST", "/send", {"Content-Type": "application/octet-stream"}, b"adapter payload")
+            adapter.build_request.return_value = ("POST", "/send", {"Content-Type": "application/x-www-form-urlencoded"}, b"adapter payload")
             adapter.accepted.return_value = True
             connection.return_value.getresponse.return_value.read.return_value = b"accepted"
             HTTPSMS().send("+919876543210", "123456")
             connection.assert_called_once_with("sms.example.test", None, timeout=5)
             connection.return_value.sock.settimeout.assert_called_once_with(10)
-            connection.return_value.request.assert_called_once_with("POST", "/send", body=b"adapter payload", headers={"Content-Type": "application/octet-stream"})
+            connection.return_value.request.assert_called_once_with("POST", "/send", body=b"adapter payload", headers={"Content-Type": "application/x-www-form-urlencoded"})
             connection.return_value.close.assert_called_once()
 
     @override_settings(CAPTIVE_SMS_BACKEND="development", DEBUG=True)

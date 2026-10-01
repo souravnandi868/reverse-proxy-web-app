@@ -277,10 +277,8 @@ production Python dependencies are required.
 | `CAPTIVE_ADMIN_UPSTREAM` | Private Django listener; default `http://127.0.0.1:8000`; only loopback HTTP URLs are accepted |
 | `CAPTIVE_SMS_BACKEND` | `http` in production; default `disabled` fails closed; `development` silently discards delivery and requires DEBUG |
 | `CAPTIVE_SMS_API_URL` | `https://api.kolkatapolice.org/crimebabuapp/Api_sms/send_sms` |
-| `CAPTIVE_SMS_API_TOKEN` | Organization's gateway credential, consumed by its adapter |
-| `CAPTIVE_SMS_SENDER_ID` | Organization's registered sender ID |
-| `CAPTIVE_SMS_TEMPLATE_ID` | Organization's approved template ID |
-| `CAPTIVE_SMS_HTTP_ADAPTER` | Dotted class path implementing `GatewayAdapter`; default base class intentionally refuses delivery |
+| `CAPTIVE_SMS_HTTP_ADAPTER` | `proxies.captive_sms.GatewayAdapter` (default) |
+| `CAPTIVE_SMS_MESSAGE_TEMPLATE` | `{#var#} is your OTP to access the zimbra mail in your device - Kolkata Police` |
 | `CAPTIVE_OTP_EXPIRY_SECONDS` | `300` (5 minutes) |
 | `CAPTIVE_SESSION_SECONDS` | `28800` (8 hours, absolute expiry) |
 | `CAPTIVE_RESEND_SECONDS` | `60` |
@@ -294,37 +292,24 @@ Email is only an alternative login identifier; captive authentication never send
 email. The development SMS provider never contacts a gateway or records the OTP;
 tests mock SMS delivery.
 
-### SMS adapter: information still required
+### SMS gateway request
 
-The HTTP transport is implemented in `proxies/captive_sms.py`. The supplied gateway
-endpoint is `https://api.kolkatapolice.org/crimebabuapp/Api_sms/send_sms`. The
-supplied OTP text template is `{#var#} is your OTP to access the (#wev app name#)
-in your device - Kolkata Police`; confirm the exact placeholder spelling and
-registered template ID with the gateway owner. **Do not enable production SMS until
-the gateway request contract is supplied and tested.** Opening the endpoint without
-its required fields returns `Required field missing`; its method, field names,
 authentication format and accepted response are not documented here. The base
-adapter deliberately raises an error rather than guessing. Implement these two
-small methods in the configured adapter class:
-
-* `build_request(path, mobile, otp, token, sender_id, template_id)` receives keyword
-  arguments and returns `(HTTP_method, path_and_query, headers_dict, body_bytes)`.
-  `path` initially contains the configured endpoint's path/query. The adapter can
-  encode dynamic query parameters for GET gateways or a body for POST gateways;
-  it cannot change the configured HTTPS origin.
-* `accepted(status, headers, body)` returns true only when the gateway's documented
-  response confirms acceptance; an HTTP 200 alone may represent rejection.
-
-Supply the exact endpoint, HTTP method, content type, recipient/country-code format,
-payload parameter names, authentication header/body format, sender/template and DLT
-requirements, OTP template substitution rules, acceptance/error response samples,
 and any IP allowlisting requirements. These define the **exact request format to
-adapt**; a sample request with redacted credentials is sufficient. URLs and secrets
-remain environment configuration. The transport verifies HTTPS, uses 5-second
-connect and 10-second response timeouts, limits responses to 64 KiB, and follows no
-redirects. Failures consume the challenge and cannot establish a session. Gateway
-exception messages, request bodies and response bodies are not logged. Disable
-payload logging on the gateway side too.
+The adapter sends an unauthenticated HTTPS `POST` with
+`Content-Type: application/x-www-form-urlencoded` and fields `mobileno` and
+`message`. It strips `+91` from the internally normalized Indian mobile number to
+match the provider's 10-digit example. The message replaces `{#var#}` in
+`CAPTIVE_SMS_MESSAGE_TEMPLATE` with the six-digit OTP. A live provider test returned
+HTTP 200 and JSON `{"status":1,"message":"Success"}`; only that successful
+response is accepted. The provider's observed error response uses status `0`.
+
+No API token, sender ID or template ID is sent or required by this endpoint. Set
+`CAPTIVE_SMS_BACKEND=http` and the endpoint in the service environment. The transport
+verifies HTTPS, uses 5-second connect and 10-second response timeouts, limits
+responses to 64 KiB, and follows no redirects. Failures consume the challenge and
+cannot establish a session. Gateway exception messages, request bodies and response
+bodies are not logged. Disable payload logging on the gateway side too.
 
 ## NGINX and session flow
 
@@ -415,7 +400,7 @@ previous file without reload. This feature does not restart NGINX.
    routes remain non-captive. Use the deployment's existing graceful Django
    code-reload procedure.
 4. Grant administrator permissions, register users, assign FQDNs, configure/test
-   the real gateway adapter, then enable and Apply one pilot route. Verify a fresh
+   the SMS provider settings, then enable and Apply one pilot route. Verify a fresh
    browser session, email/SMS, logout, JSON access and WebSocket handshake before
    rolling out the remaining routes. Apply uses the existing privileged socket.
    Run deployment validation on the actual Linux NGINX build as well.
