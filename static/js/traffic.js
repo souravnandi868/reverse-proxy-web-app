@@ -1,4 +1,5 @@
 (() => {
+  const updateView = globalThis.updateLiveView || (update => update());
   let cleanup = () => {};
   function start() {
     cleanup();
@@ -20,9 +21,11 @@
         if (stopped) return;
         if (typeof data.html !== 'string') throw new Error();
         // The authenticated endpoint renders these rows with Django HTML escaping.
-        rows.innerHTML = data.html;
-        status.textContent = '';
-        status.hidden = true;
+        updateView(() => {
+          rows.innerHTML = data.html;
+          status.textContent = '';
+          status.hidden = true;
+        });
       } catch {
         if (stopped) return;
         status.textContent = 'Refresh failed. Showing previous logs; retrying automatically. Check your connection or sign in again.';

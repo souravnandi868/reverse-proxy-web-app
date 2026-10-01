@@ -1,7 +1,9 @@
 {% load static %}
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Proxy Control</title><link rel="stylesheet" href="{% static 'css/app.css' %}"><link rel="stylesheet" href="{% static 'css/console.css' %}"><link rel="stylesheet" href="{% static 'css/captcha.css' %}"></head>
-<body class="login-page"><section class="login-panel">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Proxy Control</title><link rel="stylesheet" href="{% static 'css/app.css' %}"><link rel="stylesheet" href="{% static 'css/console.css' %}"><link rel="stylesheet" href="{% static 'css/captcha.css' %}"><link rel="stylesheet" href="{% static 'css/theme.css' %}?v=4">
+  <script src="{% static 'js/appearance.js' %}?v=1"></script>
+  <link rel="stylesheet" href="{% static 'css/console-next.css' %}?v=1" data-app-theme></head>
+<body class="login-page"><button type="button" class="theme-toggle login-theme" aria-label="Switch color theme" title="Switch color theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg></button><section class="login-panel">
 <div class="brand"><img class="brand-logo" src="{% static 'images/kolkata-police-logo.png' %}" alt="Kolkata Police emblem" width="58" height="58"><span><b>Kolkatapolice</b><small>Reverse Proxy Manager</small></span></div>
 <span class="eyebrow">SECURE ADMINISTRATION</span><h1>Sign in to your control plane.</h1>
 <form method="post">{% csrf_token %}{{ form.non_field_errors }}
@@ -9,4 +11,5 @@
 <label for="{{ form.password.id_for_label }}">Password{{ form.password }}</label>
 <div class="captcha-field"><label for="{{ form.captcha.id_for_label }}">Image code</label><div class="captcha-image-row"><img src="{{ captcha_image }}" width="210" height="70" alt="Image code with six case-sensitive letters and digits"><button class="captcha-reload" type="button" onclick="window.location.reload()" aria-label="Reload image code">Reload</button></div>{{ form.captcha }}{{ form.captcha.errors }}<small>Enter the lowercase letters, capital letters, and numbers exactly as shown.</small></div>
 <button class="button primary wide" type="submit">Sign in</button><input type="hidden" name="next" value="{{ next }}"></form>
-</section><script src="{% static 'js/certificates.js' %}" defer></script><script src="{% static 'js/servers.js' %}" defer></script><script src="{% static 'js/traffic.js' %}?v=2" defer></script><script src="{% static 'js/live-pages.js' %}?v=2" defer></script><script src="{% static 'js/search.js' %}" defer></script><script src="{% static 'js/account.js' %}" defer></script><script src="{% static 'js/navigation.js' %}" defer></script></body></html>
+</section><script src="{% static 'js/live-view.js' %}?v=1" defer></script>
+<script src="{% static 'js/certificates.js' %}" defer></script><script src="{% static 'js/servers.js' %}?v=8" defer></script><script src="{% static 'js/traffic.js' %}?v=4" defer></script><script src="{% static 'js/live-pages.js' %}?v=3" defer></script><script src="{% static 'js/search.js' %}" defer></script><script src="{% static 'js/account.js' %}" defer></script><script src="{% static 'js/usage.js' %}?v=3" defer></script><script src="{% static 'js/navigation.js' %}?v=7" defer></script></body></html>

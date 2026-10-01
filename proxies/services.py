@@ -48,9 +48,35 @@ def traffic_events(fqdn=""):
     return events.filter(domain=fqdn) if fqdn else events
 
 
-def iter_traffic_logs(fqdn=""):
+def iter_traffic_logs(fqdn="", start=None, end=None):
     """Export retained indexed history; never open NGINX logs in HTTP workers."""
-    yield from traffic_events(fqdn).values_list("data", flat=True).iterator(chunk_size=500)
+    from django.db.models import Q
+    from django.utils.dateparse import parse_datetime
+    from django.utils.timezone import is_naive
+
+    events = traffic_events(fqdn)
+    if start is None and end is None:
+        yield from events.values_list("data", flat=True).iterator(chunk_size=500)
+        return
+    bounds = Q()
+    if start is not None:
+        bounds &= Q(occurred_at__gte=start)
+    if end is not None:
+        bounds &= Q(occurred_at__lte=end)
+    # A collector still running old code after migration 0011 can write rows
+    # without occurred_at. Retain date filtering using the original log time.
+    events = events.filter(bounds | Q(occurred_at__isnull=True))
+    for occurred, data in events.values_list("occurred_at", "data").iterator(chunk_size=500):
+        if occurred is None:
+            try:
+                occurred = parse_datetime(str(data.get("time", "")))
+            except ValueError:
+                continue
+            if occurred is None or is_naive(occurred):
+                continue
+            if (start is not None and occurred < start) or (end is not None and occurred > end):
+                continue
+        yield data
 
 
 def recent_traffic_logs(limit=100, fqdn=""):

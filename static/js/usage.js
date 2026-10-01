@@ -1,4 +1,5 @@
 (() => {
+  const updateView = globalThis.updateLiveView || (update => update());
   let cleanup = () => {};
   const node = (tag, text, cls) => {
     const result = document.createElement(tag);
@@ -19,36 +20,63 @@
     card.append(node('h3', title), node('strong', value), node('p', detail, 'usage-legend'));
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 600 170');
+    const width = document.documentElement?.clientWidth < 540 ? 320 : 600;
+    svg.setAttribute('viewBox', `0 0 ${width} 170`);
     svg.setAttribute('preserveAspectRatio', 'none');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', title);
-    const ceiling = Math.max(1, ...samples.flatMap(s => keys.map(key => s[key])).filter(Number.isFinite));
+    let ceiling = Math.max(1, ...samples.flatMap(s => keys.map(key => s[key])).filter(Number.isFinite));
+    if (keys[0] === 'requests' || keys[0] === 'errors') ceiling = Math.ceil(ceiling / 4) * 4;
+    const svgNode = (tag, attrs) => {
+      const element = document.createElementNS(ns, tag);
+      Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
+      return element;
+    };
+    for (let tick = 0; tick <= 4; tick++) {
+      const y = 155 - tick * 35;
+      svg.append(svgNode('line', {x1: 80, x2: width - 10, y1: y, y2: y, stroke: '#e7edf5', 'stroke-dasharray': '3 5'}));
+      const label = svgNode('text', {x: 72, y: y + 4, 'text-anchor': 'end', fill: '#7b8ba2', 'font-size': 10});
+      label.textContent = format(ceiling * tick / 4);
+      svg.append(label);
+    }
     keys.forEach((key, index) => {
       let points = [];
       const flush = () => {
         if (!points.length) return;
+        const firstX = points[0].split(',')[0], lastX = points[points.length - 1].split(',')[0];
+        svg.append(svgNode('polygon', {points: `${firstX},155 ${points.join(' ')} ${lastX},155`, fill: colors[index], 'fill-opacity': '.08'}));
         const line = document.createElementNS(ns, 'polyline');
         line.setAttribute('points', points.join(' '));
         line.setAttribute('fill', 'none');
         line.setAttribute('stroke', colors[index]);
-        line.setAttribute('stroke-width', '2');
+        line.setAttribute('stroke-width', '2.5');
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('stroke-linejoin', 'round');
+        line.setAttribute('vector-effect', 'non-scaling-stroke');
         svg.append(line); points = [];
       };
       samples.forEach((sample, i) => {
         if (!Number.isFinite(sample[key])) { flush(); return; }
-        const x = 5 + 590 * i / Math.max(1, samples.length - 1);
-        const y = 160 - sample[key] / ceiling * 150;
+        const x = 80 + (width - 90) * i / Math.max(1, samples.length - 1);
+        const y = 155 - sample[key] / ceiling * 140;
         points.push(`${x},${y}`);
         const dot = document.createElementNS(ns, 'circle');
         dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('r', '2');
         dot.setAttribute('fill', colors[index]);
+        dot.setAttribute('class', 'chart-point');
         const tooltip = document.createElementNS(ns, 'title');
         tooltip.textContent = `${new Date(sample.time).toLocaleTimeString()}: ${format(sample[key])}`;
         dot.append(tooltip); svg.append(dot);
       });
       flush();
     });
+    const legend = node('div', undefined, 'chart-series-legend');
+    keys.forEach((key, index) => {
+      const label = node('span', keys.length > 1 ? (index === 0 ? 'Receive' : 'Send') : title);
+      label.setAttribute('style', `--series-color: ${colors[index]}`);
+      legend.append(label);
+    });
+    card.append(legend);
     card.append(svg);
     if (samples.length) {
       const axis = node('div', undefined, 'usage-axis');
@@ -71,13 +99,13 @@
     let stopped = false, timer, controller, generation = 0;
     function render(data) {
       const t = data.total, s = data.series;
-      charts.replaceChildren(
+      const nextCharts = [
         chart('Traffic', `RX ${size(t.rx)} · TX ${size(t.tx)}`, 'Receive (blue), send (purple); average bytes/sec per interval.', s,
           ['rx_bps', 'tx_bps'], ['#0875df', '#8b5cf6'], n => `${size(n)}/s`),
         chart('Requests', `${t.requests} requests`, 'Completed requests per interval.', s, ['requests'], ['#0875df'], n => String(n)),
         chart('Errors', `${t.errors} errors`, 'HTTP 4xx and 5xx responses per interval.', s, ['errors'], ['#dc5353'], n => String(n)),
-        chart('Response time', ms(t.response_ms), 'Average NGINX request duration; includes client transfer time.', s, ['response_ms'], ['#15986a'], ms));
-      sites.replaceChildren();
+        chart('Response time', ms(t.response_ms), 'Average NGINX request duration; includes client transfer time.', s, ['response_ms'], ['#15986a'], ms)];
+      const nextRows = [];
       const max = Math.max(1, ...data.sites.map(site => site.requests));
       for (const site of data.sites) {
         const row = node('tr');
@@ -90,12 +118,16 @@
         row.append(name, requests, node('td', size(site.rx)), node('td', size(site.tx)),
           node('td', site.error_percent === null ? 'Unavailable' : `${site.errors} (${site.error_percent.toFixed(1)}%)`),
           node('td', ms(site.response_ms)));
-        sites.append(row);
+        nextRows.push(row);
       }
       if (!data.sites.length) {
         const row = node('tr'), cell = node('td', 'No collected requests in this time range. Check that the traffic collector is running.');
-        cell.setAttribute('colspan', '6'); row.append(cell); sites.append(row);
+        cell.setAttribute('colspan', '6'); row.append(cell); nextRows.push(row);
       }
+      updateView(() => {
+        charts.replaceChildren(...nextCharts);
+        sites.replaceChildren(...nextRows);
+      });
     }
     async function poll() {
       if (stopped) return;
@@ -122,7 +154,7 @@
     }
     const change = () => {
       clearTimeout(timer); generation++; controller?.abort();
-      charts.replaceChildren(); sites.replaceChildren(); status.textContent = 'Loading usage…';
+      charts.classList.add('usage-stale'); status.textContent = 'Loading selected range…';
       poll();
     };
     fqdn.addEventListener('change', change); range.addEventListener('change', change);

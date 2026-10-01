@@ -1,4 +1,5 @@
 (() => {
+  const updateView = globalThis.updateLiveView || (update => update());
   let cleanup = () => {};
   function start() {
     cleanup();
@@ -28,25 +29,44 @@
       if (className) node.className = className;
       return node;
     }
-    function chart(series, colors, percent) {
+    function chart(series, colors, percent, format, title) {
       const ns = 'http://www.w3.org/2000/svg';
       const svg = document.createElementNS(ns, 'svg');
-      svg.setAttribute('viewBox', '0 0 300 90');
+      const width = document.documentElement?.clientWidth < 540 ? 320 : 600;
+      svg.setAttribute('viewBox', `0 0 ${width} 170`);
       svg.setAttribute('preserveAspectRatio', 'none');
       svg.setAttribute('role', 'img');
-      svg.setAttribute('aria-label', 'Recent resource measurements');
+      svg.setAttribute('aria-label', `${title}: recent resource measurements`);
       const ceiling = percent ? 100 : Math.max(1, ...series.flat().map(s => s.value).filter(Number.isFinite));
+      const svgNode = (tag, attrs) => {
+        const element = document.createElementNS(ns, tag);
+        Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
+        return element;
+      };
+      for (let tick = 0; tick <= 4; tick++) {
+        const y = 155 - tick * 35;
+        svg.append(svgNode('line', {x1: 80, x2: width - 10, y1: y, y2: y, stroke: '#e7edf5', 'stroke-dasharray': '3 5'}));
+        const label = svgNode('text', {x: 72, y: y + 4, 'text-anchor': 'end', fill: '#7b8ba2', 'font-size': 10});
+        label.textContent = format(ceiling * tick / 4);
+        svg.append(label);
+      }
       const times = series.flat().map(s => Date.parse(s.time));
       const first = Math.min(...times), last = Math.max(...times);
       series.forEach((values, i) => {
         let segment = [];
         const flush = () => {
           if (!segment.length) return;
+          const firstX = segment[0].split(',')[0], lastX = segment[segment.length - 1].split(',')[0];
+          svg.append(svgNode('polygon', {points: `${firstX},155 ${segment.join(' ')} ${lastX},155`, fill: colors[i], 'fill-opacity': '.08'}));
           const line = document.createElementNS(ns, 'polyline');
           line.setAttribute('points', segment.join(' '));
           line.setAttribute('fill', 'none');
           line.setAttribute('stroke', colors[i]);
-          line.setAttribute('stroke-width', '2');
+          line.setAttribute('stroke-width', '2.5');
+          line.setAttribute('class', 'chart-series-line');
+          line.setAttribute('stroke-linecap', 'round');
+          line.setAttribute('stroke-linejoin', 'round');
+          line.setAttribute('vector-effect', 'non-scaling-stroke');
           svg.append(line);
           segment = [];
         };
@@ -54,7 +74,13 @@
           const time = Date.parse(sample.time);
           if (j && time - Date.parse(values[j - 1].time) > 30000) flush();
           if (!Number.isFinite(sample.value)) { flush(); return; }
-          segment.push(`${2 + (time - first) * 296 / Math.max(1, last - first)},${86 - sample.value / ceiling * 82}`);
+          const x = 80 + (time - first) * (width - 90) / Math.max(1, last - first);
+          const y = 155 - sample.value / ceiling * 140;
+          segment.push(`${x},${y}`);
+          const dot = svgNode('circle', {cx: x, cy: y, r: 2, fill: colors[i], class: 'chart-point'});
+          const tooltip = svgNode('title', {});
+          tooltip.textContent = `${new Date(sample.time).toLocaleTimeString()}: ${format(sample.value)}`;
+          dot.append(tooltip); svg.append(dot);
         });
         flush();
       });
@@ -63,7 +89,15 @@
     function resource(title, value, detail, series, colors, percentage) {
       const node = el('div', undefined, 'resource');
       node.append(el('h3', title), el('strong', value), el('small', detail));
-      node.append(chart(series, colors, percentage !== undefined));
+      const format = percentage !== undefined ? n => `${n.toFixed(0)}%` : title === 'NGINX log storage' ? bytes : rate;
+      node.append(chart(series, colors, percentage !== undefined, format, title));
+      const legend = el('div', undefined, 'chart-series-legend');
+      colors.forEach((color, index) => {
+        const label = el('span', colors.length > 1 ? (index === 0 ? 'Receive' : 'Send') : title);
+        label.setAttribute('style', `--series-color: ${color}`);
+        legend.append(label);
+      });
+      node.append(legend);
       const points = series.flat();
       if (points.length) {
         const formatTime = time => new Date(time).toLocaleTimeString();
@@ -80,14 +114,14 @@
       return node;
     }
     function render(servers) {
-      cards.replaceChildren();
-      if (!servers.length) cards.append(el('p', 'NGINX host monitoring is not configured. Enroll the reverse proxy server and start its monitoring agent.', 'panel monitor-empty'));
+      const nextCards = [];
+      if (!servers.length) nextCards.push(el('p', 'NGINX host monitoring is not configured. Enroll the reverse proxy server and start its monitoring agent.', 'panel monitor-empty'));
       servers.forEach(server => {
         const card = el('section', undefined, `panel server-card ${server.status}`);
         const heading = el('div', undefined, 'server-title');
         heading.append(el('h2', server.name), el('span', labels[server.status], `server-state ${server.status}`));
-        card.append(heading, el('p', server.address + ' ? Host-wide resource usage', 'server-subtitle'));
-        cards.append(card);
+        card.append(heading, el('p', server.address + ' \u00b7 Host-wide resource usage', 'server-subtitle'));
+        nextCards.push(card);
         const m = server.metrics;
         if (!m) {
           card.append(el('p', 'Resource measurements will appear when this server’s monitoring agent connects.', 'monitor-empty'));
@@ -123,12 +157,15 @@
           const utilization = n.speed_mbps > 0 ? `${(Math.max(n.rx, n.tx) * 8 / (n.speed_mbps * 1e6) * 100).toFixed(1)}% of ${n.speed_mbps} Mbps link` : 'Link capacity unknown';
           const row = el('div', undefined, 'device-row');
           const state = n.is_up === true ? 'Up' : n.is_up === false ? 'Down' : 'Link state unknown';
-          row.append(el('span', `${n.name} ? ${state}`), el('span', n.rate_available === false ? 'Waiting for rate sample' : `RX ${bytes(n.rx)}/s · TX ${bytes(n.tx)}/s · ${utilization}`)); network.append(row);
+          row.append(el('span', `${n.name} \u00b7 ${state}`), el('span', n.rate_available === false ? 'Waiting for rate sample' : `RX ${bytes(n.rx)}/s · TX ${bytes(n.tx)}/s · ${utilization}`)); network.append(row);
         });
         if (!m.interfaces.length) network.append(el('p', 'No non-loopback interface measurements reported.', 'server-subtitle'));
         network.append(el('p', 'Host interface counters include all processes and are separate from External NGINX Traffic. Virtual interfaces may duplicate traffic. Link speed is reported by the operating system.', 'server-subtitle'));
         devices.append(disks, network); card.append(devices);
       });
+      // Build every chart before touching the live DOM. Reading chart width
+      // while the page is empty forces layout and clamps scroll to the top.
+      updateView(() => cards.replaceChildren(...nextCards));
     }
     async function poll() {
       if (stopped) return;

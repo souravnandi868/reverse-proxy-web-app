@@ -1,5 +1,31 @@
 # NGINX Proxy Control
 
+### Console appearance and updates
+
+The console opens in a dark navy/cyan theme. Use the theme button beside search
+to switch to light mode; the preference is saved in the current browser. All
+fonts, icons, scripts and styles work without external asset services.
+Monitoring updates and form operations preserve scroll position. Certificate
+expiry badges show remaining days: yellow at 15–30 days, red below 15 days,
+and a separate expired message for past dates. Settings is last in the sidebar.
+
+When deploying a new release, run migrations and `collectstatic --noinput`,
+restart Django and the traffic collector, then hard-refresh the browser.
+
+### Incoming Traffic date-range exports
+
+Enter export start and end times in IST (UTC+05:30). The export includes both
+endpoints, respects the selected FQDN, and contains only retained requests.
+If no requests match, the page displays an explanation instead of downloading
+an empty workbook. Older rows without an indexed timestamp use their original,
+timezone-aware log timestamp for export filtering.
+
+After deploying collector or traffic model updates, restart both the Django
+application and `proxy-traffic-collector` using the deployment account and the
+existing service procedure. A collector left running old code can continue
+writing requests without their indexed timestamps. On installations using the
+provided systemd unit, restart it with `sudo systemctl restart proxy-traffic-collector`.
+
 A Django administration console for approved NGINX reverse proxy configurations on Oracle Linux 9.5.
 
 ## Security model

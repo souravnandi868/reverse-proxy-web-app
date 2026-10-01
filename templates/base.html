@@ -9,35 +9,40 @@
   <link rel="stylesheet" href="{% static 'css/console.css' %}">
   {% block extra_css %}{% endblock %}
   <link rel="stylesheet" href="{% static 'css/logout.css' %}">
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=4">
+  <script src="{% static 'js/appearance.js' %}?v=1"></script>
+  <link rel="stylesheet" href="{% static 'css/console-next.css' %}?v=1" data-app-theme>
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="{% url 'dashboard' %}"><img class="brand-logo" src="{% static 'images/kolkata-police-logo.png' %}" alt="Kolkata Police emblem" width="58" height="58"><span><b>Reverse Proxy</b><small>Manager</small></span></a>
-    <nav>
-      <a href="{% url 'dashboard' %}" class="nav-link {% if request.path == '/' %}active{% endif %}"><span>▦</span>Dashboard</a>
-      <a href="{% url 'proxy_list' %}" class="nav-link {% if request.resolver_match.url_name == 'proxy_list' or request.resolver_match.url_name == 'proxy_create' or request.resolver_match.url_name == 'proxy_edit' or request.resolver_match.url_name == 'proxy_delete' %}active{% endif %}"><span>▤</span>Reverse Proxies</a>
-      <a href="{% url 'certificates' %}" class="nav-link"><span>⬟</span>SSL Certificates</a>
-      <a href="{% url 'servers' %}" class="nav-link {% if request.resolver_match.url_name == 'servers' %}active{% endif %}"><span>▦</span>NGINX Server</a>
-      <a href="{% url 'audit' %}" class="nav-link"><span>▣</span>Incoming Traffic</a>
-      <a href="{% url 'website_usage' %}" class="nav-link {% if request.resolver_match.url_name == 'website_usage' %}active{% endif %}"><span>?</span>Website Usage</a>
-      <a href="/admin/" class="nav-link"><span>⚙</span>Settings</a>
+    <nav aria-label="Main navigation">
+      <span class="nav-label">Workspace</span>
+      <a href="{% url 'dashboard' %}" class="nav-link {% if request.path == '/' %}active{% endif %}"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>Dashboard</a>
+      <a href="{% url 'proxy_list' %}" class="nav-link {% if request.resolver_match.url_name == 'proxy_list' or request.resolver_match.url_name == 'proxy_create' or request.resolver_match.url_name == 'proxy_edit' or request.resolver_match.url_name == 'proxy_delete' %}active{% endif %}"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v9H14M10 6h8v9"/></svg></span>Reverse Proxies</a>
+      <a href="{% url 'certificates' %}" class="nav-link {% if request.resolver_match.url_name == 'certificates' %}active{% endif %}"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></svg></span>SSL Certificates</a>
+      <a href="{% url 'audit' %}" class="nav-link {% if request.resolver_match.url_name == 'audit' or request.resolver_match.url_name == 'traffic_export' %}active{% endif %}"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>Incoming Traffic</a>
+      <a href="{% url 'website_usage' %}" class="nav-link {% if request.resolver_match.url_name == 'website_usage' %}active{% endif %}"><span aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M3 3v18h18M7 16v-5m5 5V7m5 9v-8"/></svg></span>Website Usage</a>
+      <a href="{% url 'servers' %}" class="nav-link {% if request.resolver_match.url_name == 'servers' %}active{% endif %}"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01M12 6.5h5M12 17.5h5"/></svg></span>NGINX Server</a>
+      <a href="/admin/" class="nav-link"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="12" r="2" fill="currentColor"/><circle cx="10" cy="18" r="2" fill="currentColor"/></svg></span>Settings</a>
     </nav>
     <div class="sidebar-foot"><strong>Kolkata Police</strong><span>IT Infrastructure</span><small>Secure Systems<br>Safer Citizens</small></div>
   </aside>
   <main class="main">
-    <header class="topbar"><div><h1>{% block heading %}Kolkatapolice Reverse Proxy Dashboard{% endblock %}</h1><p>Monitor and manage your Nginx reverse proxies, domains, certificates and backend services.</p></div><div class="topbar-tools"><label class="search"><span>⌕</span><input type="search" id="page-search" placeholder="Search this page..." aria-label="Search this page" aria-describedby="search-status"></label><span class="bell">●</span><div class="user-menu"><details class="account-dropdown"><summary class="avatar" aria-label="Open account menu" title="Account menu">{{ request.user.get_username|slice:':1'|upper }}</summary><div class="account-options"><strong>{{ request.user.get_username }}</strong><a href="{% url 'account_information' %}">Account information</a><a href="{% url 'account_password' %}">Change password</a><a href="{% url 'account_contact' %}#id_mobile_number">Add or change mobile number</a><a href="{% url 'account_contact' %}#id_email">Add or change email ID</a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Logout</button></form></div></details><span><b>{{ request.user.get_username|title }}</b><small>{% if request.user.is_superuser %}Administrator{% else %}Account{% endif %}</small></span></div></div></header>
+    <header class="topbar"><div><span class="page-kicker">KOLKATA POLICE <span>/</span> OPERATIONS CONSOLE</span><h1>{% block heading %}Kolkatapolice Reverse Proxy Dashboard{% endblock %}</h1><p>Monitor and manage your Nginx reverse proxies, domains, certificates and backend services.</p></div><div class="topbar-tools"><label class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" id="page-search" placeholder="Search this page..." aria-label="Search this page" aria-describedby="search-status"></label><button class="theme-toggle" type="button" aria-label="Switch color theme" title="Switch color theme"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg></button><div class="user-menu"><details class="account-dropdown"><summary class="avatar" aria-label="Open account menu" title="Account menu">{{ request.user.get_username|slice:':1'|upper }}</summary><div class="account-options"><strong>{{ request.user.get_username }}</strong><a href="{% url 'account_information' %}">Account information</a><a href="{% url 'account_password' %}">Change password</a><a href="{% url 'account_contact' %}#id_mobile_number">Add or change mobile number</a><a href="{% url 'account_contact' %}#id_email">Add or change email ID</a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Logout</button></form></div></details><span><b>{{ request.user.get_username|title }}</b><small>{% if request.user.is_superuser %}Administrator{% else %}Account{% endif %}</small></span></div></div></header>
     <p id="search-status" class="search-status" role="status" aria-live="polite" hidden></p>
     {% if messages %}<div class="messages">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
     {% block content %}{% endblock %}
   </main>
-  <script src="{% static 'js/certificates.js' %}" defer></script>
-<script src="{% static 'js/servers.js' %}?v=5" defer></script>
-<script src="{% static 'js/traffic.js' %}?v=3" defer></script>
-<script src="{% static 'js/live-pages.js' %}?v=2" defer></script>
+  <script src="{% static 'js/live-view.js' %}?v=1" defer></script>
+<script src="{% static 'js/certificates.js' %}" defer></script>
+<script src="{% static 'js/servers.js' %}?v=8" defer></script>
+<script src="{% static 'js/traffic.js' %}?v=4" defer></script>
+<script src="{% static 'js/live-pages.js' %}?v=3" defer></script>
 <script src="{% static 'js/search.js' %}" defer></script>
 <script src="{% static 'js/account.js' %}" defer></script>
-<script src="{% static 'js/usage.js' %}?v=1" defer></script>
-<script src="{% static 'js/navigation.js' %}?v=3" defer></script>
+<script src="{% static 'js/usage.js' %}?v=3" defer></script>
+<script src="{% static 'js/navigation.js' %}?v=7" defer></script>
 
 </body>
 </html>

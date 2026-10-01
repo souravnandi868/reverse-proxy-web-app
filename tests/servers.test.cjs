@@ -7,13 +7,14 @@ const vm = require('node:vm');
 class Element {
   constructor() { this.children = []; this.dataset = {}; this.textContent = ''; }
   append(...nodes) { this.children.push(...nodes); }
-  replaceChildren() { this.children = []; }
+  replaceChildren(...nodes) { this.children = nodes; }
   setAttribute(key, value) { (this.attributes ||= {})[key] = value; }
   querySelectorAll() { return []; }
   addEventListener(name, callback) { (this.handlers ||= {})[name] = callback; }
   removeEventListener(name) { delete this.handlers[name]; }
 }
 const textOf = node => [node.textContent, ...node.children.map(textOf)].join(' ');
+const linesOf = chart => chart.children.filter(node => node.attributes?.class === 'chart-series-line');
 
 async function render(rates, history = []) {
   const nodes = Object.fromEntries(['resource-monitor', 'server-cards', 'monitor-status', 'resource-range'].map(id => [id, new Element()]));
@@ -44,9 +45,10 @@ test('first render and reopening load saved history with gaps for missing report
   ];
   for (let i = 0; i < 2; i++) {
     const {cpuChart} = await render({}, history);
-    assert.equal(cpuChart.children.length, 2);
-    assert.equal(cpuChart.children[0].attributes.points.split(' ').length, 2);
-    assert.equal(cpuChart.children[1].attributes.points.split(' ').length, 1);
+    const lines = linesOf(cpuChart);
+    assert.equal(lines.length, 2);
+    assert.equal(lines[0].attributes.points.split(' ').length, 2);
+    assert.equal(lines[1].attributes.points.split(' ').length, 1);
   }
 });
 
@@ -80,12 +82,12 @@ test('long-running graphs keep a readable window and can show all saved history'
     time: new Date(end - (359 - i) * 3000).toISOString(), cpu: i % 100,
   }));
   const {cpuChart, nodes} = await render({}, history);
-  assert.equal(cpuChart.children[0].attributes.points.split(' ').length, 61);
+  assert.equal(linesOf(cpuChart)[0].attributes.points.split(' ').length, 61);
   const range = nodes['resource-range'];
   const count = () => {
     const card = nodes['server-cards'].children[0];
     const grid = card.children.find(node => node.className === 'resource-grid');
-    return grid.children[0].children[3].children[0].attributes.points.split(' ').length;
+    return linesOf(grid.children[0].children[3])[0].attributes.points.split(' ').length;
   };
   range.value = '0'; range.handlers.change();
   assert.equal(count(), 360);

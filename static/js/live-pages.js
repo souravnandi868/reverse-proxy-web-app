@@ -1,4 +1,5 @@
 (() => {
+  const updateView = globalThis.updateLiveView || (update => update());
   let cleanup = () => {};
   let pointerDown = false;
   document.addEventListener('pointerdown', () => { pointerDown = true; });
@@ -43,16 +44,18 @@
         const replacements = regions.map(region => page.querySelector(`[data-live-region="${region.dataset.liveRegion}"]`));
         if (replacements.some(region => !region)) throw new Error('Missing content');
         if (stopped || window.appBusy || document.hidden || pointerDown) return;
-        regions.forEach((region, index) => {
-          // Keep keyboard focus and any ongoing interaction in place.
-          if (region.contains(document.activeElement)) return;
-          const scrollPositions = [...region.querySelectorAll('.table-wrap')].map(el => el.scrollLeft);
-          region.innerHTML = replacements[index].innerHTML;
-          region.querySelectorAll('.table-wrap').forEach((el, i) => { el.scrollLeft = scrollPositions[i] || 0; });
+        updateView(() => {
+          regions.forEach((region, index) => {
+            // Keep keyboard focus and any ongoing interaction in place.
+            if (region.contains(document.activeElement)) return;
+            if (region.innerHTML !== replacements[index].innerHTML) {
+              region.innerHTML = replacements[index].innerHTML;
+            }
+          });
+          document.dispatchEvent(new Event('live-content-updated'));
+          status.textContent = '';
+          status.hidden = true;
         });
-        document.dispatchEvent(new Event('live-content-updated'));
-        status.textContent = '';
-        status.hidden = true;
       } catch {
         if (stopped) return;
         status.textContent = 'Update failed. Showing previous data; retrying automatically. Check your connection or sign in again.';

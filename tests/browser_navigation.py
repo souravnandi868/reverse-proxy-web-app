@@ -14,6 +14,126 @@ from proxies.traffic_reader import TrafficReader
 
 
 class NavigationBrowserTests(StaticLiveServerTestCase):
+    def test_operations_and_redirects_keep_position(self):
+        from django.conf import settings
+        user = get_user_model().objects.create_superuser("action-admin", password="test-password")
+        proxies = ProxyConfig.objects.bulk_create([ProxyConfig(domain_name=f"action-{i:02d}.example.org",
+            backend_private_ip="10.0.0.5", backend_port=8080, incoming_protocol="http",
+            created_by=user, updated_by=user) for i in range(30)])
+        self.client.force_login(user)
+        with patch("proxies.views.apply_proxy", return_value=SimpleNamespace(ok=True, message="Applied")), patch(
+            "proxies.forms.resolve_public_ip", return_value="8.8.8.8"
+        ), sync_playwright() as playwright:
+            browser = playwright.chromium.launch(channel="chrome", headless=True)
+            page = browser.new_page(viewport={"width": 1100, "height": 600})
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.context.add_cookies([{"name": settings.SESSION_COOKIE_NAME,
+                "value": self.client.cookies[settings.SESSION_COOKIE_NAME].value, "url": self.live_server_url}])
+            page.goto(self.live_server_url + "/proxies/")
+            page.evaluate("window.documentToken = 'same'; window.scrollTo(0, 700)")
+            pk = proxies[0].pk
+            # Toggle redirects from the list to dashboard, and apply stays there.
+            for action in ("toggle", "apply"):
+                with page.expect_response(lambda r: r.request.method == "POST"):
+                    page.eval_on_selector(f'form[action="/proxies/{pk}/{action}/"]', "form => form.requestSubmit()")
+                expect(page.locator('.messages')).to_be_visible()
+                page.wait_for_timeout(200)
+                self.assertAlmostEqual(page.evaluate("scrollY"), 700, delta=2)
+                self.assertEqual(page.evaluate("window.documentToken"), "same")
+            # Edit validation stays in place; save returns to the list position.
+            page.eval_on_selector(f'a[href="/proxies/{pk}/edit/"]', "link => link.click()")
+            expect(page.locator('.form-shell')).to_be_visible()
+            page.evaluate("window.scrollTo(0, 200)")
+            editor_position = page.evaluate("scrollY")
+            page.eval_on_selector('[name="domain_name"]', "el => { el.value = 'invalid'; }")
+            page.eval_on_selector('.form-shell', "form => form.requestSubmit()")
+            expect(page.locator('.errorlist').first).to_be_visible()
+            self.assertAlmostEqual(page.evaluate("scrollY"), editor_position, delta=2)
+            page.eval_on_selector('[name="domain_name"]', "el => { el.value = 'action-00.example.org'; }")
+            page.eval_on_selector('.form-shell', "form => form.requestSubmit()")
+            expect(page.locator('.messages')).to_contain_text("Proxy updated")
+            self.assertAlmostEqual(page.evaluate("scrollY"), 700, delta=2)
+            page.eval_on_selector(f'a[href="/proxies/{pk}/delete/"]', "link => link.click()")
+            expect(page.locator('h1')).to_have_text("Delete proxy")
+            page.get_by_role('button', name='Delete proxy', exact=True).evaluate("button => button.form.requestSubmit()")
+            expect(page.locator('.messages')).to_contain_text("Proxy and its backups deleted")
+            self.assertAlmostEqual(page.evaluate("scrollY"), 700, delta=2)
+            self.assertEqual(page.evaluate("window.documentToken"), "same")
+            # Settings uses native Django admin forms rather than app navigation.
+            page.goto(self.live_server_url + f"/admin/auth/user/{user.pk}/change/")
+            page.evaluate("window.scrollTo(0, 700)")
+            admin_position = page.evaluate("scrollY")
+            self.assertGreater(admin_position, 100)
+            page.eval_on_selector('[name="last_name"]', "el => { el.value = 'Updated'; }")
+            page.eval_on_selector('input[name="_continue"]', "button => button.form.requestSubmit(button)")
+            expect(page.locator('.messagelist .success')).to_be_visible()
+            self.assertAlmostEqual(page.evaluate("scrollY"), admin_position, delta=2)
+            self.assertEqual(errors, [])
+            browser.close()
+
+    def test_live_refresh_and_range_changes_preserve_scroll(self):
+        from django.conf import settings
+        from django.utils import timezone
+        from datetime import timedelta
+        from proxies.models import ServerMonitor, TrafficEvent
+
+        user = get_user_model().objects.create_superuser("scroll-admin", password="test-password")
+        self.client.force_login(user)
+        now = timezone.now()
+        ServerMonitor.objects.create(address="10.0.0.4", is_reverse_proxy=True, token_hash="test-only",
+            received_at=now, latest={"cpu": 25, "ram": {"used": 400, "total": 1000, "percent": 40},
+                                    "disks": [], "interfaces": []},
+            history=[{"time": (now - timedelta(seconds=i * 3)).isoformat(), "cpu": 25, "ram": 40}
+                     for i in reversed(range(50))])
+        ProxyConfig.objects.bulk_create([ProxyConfig(domain_name=f"site-{i}.example.org",
+            backend_private_ip="10.0.0.5", backend_port=8080, created_by=user, updated_by=user)
+            for i in range(25)])
+        TrafficEvent.objects.bulk_create([TrafficEvent(domain="site-0.example.org", occurred_at=now,
+            data={"time": now.isoformat(), "destination_fqdn": "site-0.example.org", "status": 200,
+                  "received_bytes": 100, "sent_bytes": 200, "request_time": .2}) for _ in range(40)])
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(channel="chrome", headless=True)
+            page = browser.new_page(viewport={"width": 1100, "height": 650})
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.context.add_cookies([{"name": settings.SESSION_COOKIE_NAME,
+                "value": self.client.cookies[settings.SESSION_COOKIE_NAME].value, "url": self.live_server_url}])
+            for route, ready, delay in [("/servers/", ".server-card", 3400),
+                                        ("/usage/", ".usage-chart", 3400),
+                                        ("/audit/", "#traffic-rows tr", 3400),
+                                        ("/proxies/", "#proxies tbody tr", 5400),
+                                        ("/", ".stats", 5400)]:
+                with self.subTest(route=route):
+                    page.goto(self.live_server_url + route)
+                    expect(page.locator(ready).first).to_be_visible()
+                    page.evaluate("window.documentToken = 'same'; window.scrollTo(0, 450)")
+                    position = page.evaluate("scrollY")
+                    self.assertGreater(position, 100)
+                    page.wait_for_timeout(delay)
+                    self.assertAlmostEqual(page.evaluate("scrollY"), position, delta=2)
+                    self.assertEqual(page.evaluate("window.documentToken"), "same")
+                    if route in ("/servers/", "/usage/"):
+                        selector = "#resource-range" if route == "/servers/" else "#usage-range"
+                        # Dispatch without Playwright scrolling the filter into view.
+                        page.eval_on_selector(selector, "el => { el.value = '300'; el.dispatchEvent(new Event('change')); }")
+                        page.wait_for_timeout(500)
+                        self.assertAlmostEqual(page.evaluate("scrollY"), position, delta=2)
+                        self.assertEqual(page.locator(selector).input_value(), "300")
+            # Refreshing the current view through its own link also keeps position.
+            page.eval_on_selector('.sidebar nav a[href="/"]', "el => el.click()")
+            page.wait_for_timeout(500)
+            self.assertAlmostEqual(page.evaluate("scrollY"), position, delta=2)
+            self.assertEqual(page.evaluate("window.documentToken"), "same")
+            # Mobile tables keep their horizontal position through region updates.
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.goto(self.live_server_url + "/proxies/")
+            page.locator('#proxies .table-wrap').evaluate("el => { el.scrollLeft = 150; }")
+            page.wait_for_timeout(5400)
+            self.assertEqual(page.locator('#proxies .table-wrap').evaluate("el => el.scrollLeft"), 150)
+            self.assertEqual(errors, [])
+            browser.close()
+
     def test_traffic_filter_and_excel_without_navigation(self):
         import json
         from io import BytesIO
@@ -46,9 +166,14 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
             with page.expect_response(lambda response: "/audit/rows/?fqdn=one.example.org" in response.url):
                 page.wait_for_timeout(5500)
             expect(page.locator("#traffic-rows")).not_to_contain_text("two.example.org")
-            for label, count in [("Export current view to Excel", 2), ("Export all to Excel", 3)]:
+            for count in (2, 3):
+                if count == 3:
+                    page.get_by_role("link", name="Show all", exact=True).click()
+                    expect(page.locator("#traffic-rows")).to_contain_text("two.example.org")
+                page.locator('[name="start"]').fill("2026-09-14T17:30")
+                page.locator('[name="end"]').fill("2026-09-14T17:30")
                 with page.expect_download() as download:
-                    page.get_by_role("link", name=label, exact=True).click()
+                    page.get_by_role("button", name="Export range to Excel", exact=True).click()
                 workbook = load_workbook(BytesIO(Path(download.value.path()).read_bytes()))
                 self.assertEqual(workbook.active.max_row, count)
                 workbook.close()
@@ -223,6 +348,14 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
             browser.close()
 
     def test_account_menu_updates_contacts_and_password_without_navigation(self):
+        import base64
+        import re
+
+        def fill_captcha(page):
+            image = page.locator('.captcha-image-row img').get_attribute('src')
+            svg = base64.b64decode(image.split(',', 1)[1]).decode()
+            page.locator('[name="captcha"]').fill(''.join(re.findall(r'<text[^>]*>(.*?)</text>', svg)))
+
         get_user_model().objects.create_superuser("root", password="original-test-password")
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(channel="chrome", headless=True)
@@ -233,7 +366,15 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
             page.evaluate("window.documentToken = 'unchanged'")
             page.locator('[name="username"]').fill("root")
             page.locator('[name="password"]').fill("original-test-password")
+            fill_captcha(page)
             page.get_by_role("button", name="Sign in", exact=True).click()
+            expect(page.locator(".stats")).to_be_visible()
+
+            # Controllers and the shared theme must survive navigation from login.
+            page.locator('.sidebar a[href="/usage/"]').click()
+            expect(page.locator('#usage-charts .usage-chart')).to_have_count(4)
+            self.assertTrue(page.evaluate("document.head.querySelector('link[rel=stylesheet]:last-of-type').hasAttribute('data-app-theme')"))
+            page.locator('.sidebar nav a[href="/"]').click()
             expect(page.locator(".stats")).to_be_visible()
 
             menu = page.locator(".account-dropdown")
@@ -254,22 +395,27 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
 
             menu.locator("summary").click()
             menu.get_by_role("link", name="Add or change mobile number", exact=True).click()
-            page.get_by_label("Mobile number", exact=True).fill("+91 9876543210")
-            page.get_by_label("Email ID", exact=True).fill("root@example.org")
+            page.locator('[name="mobile_number"]').fill("+91 9876543210")
+            page.locator('[name="email"]').fill("root@example.org")
             page.get_by_role("button", name="Save changes", exact=True).click()
             expect(page.locator(".account-info")).to_contain_text("+91 9876543210")
             expect(page.locator(".account-info")).to_contain_text("root@example.org")
 
             menu.locator("summary").click()
             menu.get_by_role("link", name="Add or change email ID", exact=True).click()
-            expect(page.get_by_label("Mobile number", exact=True)).to_have_value("+91 9876543210")
-            expect(page.get_by_label("Email ID", exact=True)).to_have_value("root@example.org")
-            page.get_by_label("Email ID", exact=True).fill("updated@example.org")
+            expect(page.locator('[name="mobile_number"]')).to_have_value("+91 9876543210")
+            expect(page.locator('[name="email"]')).to_have_value("root@example.org")
+            page.locator('[name="email"]').fill("updated@example.org")
             page.get_by_role("button", name="Save changes", exact=True).click()
             expect(page.locator(".account-info")).to_contain_text("updated@example.org")
 
             menu.locator("summary").click()
             menu.get_by_role("link", name="Change password", exact=True).click()
+            page.locator('[name="old_password"]').fill("incorrect-current-password")
+            page.locator('[name="new_password1"]').fill("changed-test-password-2026!")
+            page.locator('[name="new_password2"]').fill("changed-test-password-2026!")
+            page.get_by_role("button", name="Save changes", exact=True).click()
+            expect(page.locator(".errorlist")).to_contain_text("old password was entered incorrectly")
             page.locator('[name="old_password"]').fill("original-test-password")
             page.locator('[name="new_password1"]').fill("changed-test-password-2026!")
             page.locator('[name="new_password2"]').fill("changed-test-password-2026!")
@@ -282,6 +428,7 @@ class NavigationBrowserTests(StaticLiveServerTestCase):
 
             page.locator('[name="username"]').fill("root")
             page.locator('[name="password"]').fill("changed-test-password-2026!")
+            fill_captcha(page)
             page.get_by_role("button", name="Sign in", exact=True).click()
             expect(page.locator(".stats")).to_be_visible()
             page.set_viewport_size({"width": 390, "height": 844})

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 
 class CertificateBundle(models.Model):
@@ -17,6 +18,21 @@ class CertificateBundle(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def expiry(self):
+        if self.valid_until is None:
+            return {"state": "unknown", "label": "Expiry date not recorded"}
+        days = (self.valid_until - timezone.localdate()).days
+        state = "critical" if days < 15 else "warning" if days <= 30 else "healthy"
+        if days < 0:
+            count = abs(days)
+            label = f"Expired {count} day{'s' if count != 1 else ''} ago"
+        elif days == 0:
+            label = "Expires today"
+        else:
+            label = f"{days} day{'s' if days != 1 else ''} remaining"
+        return {"state": state, "label": label}
 
 
 class ProxyConfig(models.Model):
@@ -101,4 +117,5 @@ class TrafficEvent(models.Model):
 
     class Meta:
         ordering = ["-id"]
-        indexes = [models.Index(fields=["domain", "-id"], name="traffic_domain_id")]
+        indexes = [models.Index(fields=["domain", "-id"], name="traffic_domain_id"),
+                   models.Index(fields=["domain", "occurred_at"], name="traffic_domain_time")]

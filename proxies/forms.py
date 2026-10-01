@@ -9,6 +9,19 @@ from .models import CertificateBundle, ProxyConfig
 DOMAIN_RE = re.compile(r"^(?=.{1,253}\Z)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\Z")
 
 
+class TrafficExportForm(forms.Form):
+    start = forms.DateTimeField(label="Start date and time", widget=forms.DateTimeInput(
+        attrs={"type": "datetime-local", "step": "1"}))
+    end = forms.DateTimeField(label="End date and time", widget=forms.DateTimeInput(
+        attrs={"type": "datetime-local", "step": "1"}))
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("start") and cleaned.get("end") and cleaned["start"] > cleaned["end"]:
+            self.add_error("end", "End date and time must be on or after the start.")
+        return cleaned
+
+
 def resolve_public_ip(domain):
     """Return the first globally routable address published for a domain."""
     try:

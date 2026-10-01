@@ -90,6 +90,9 @@ class AccountTests(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password(data["new_password1"]))
         self.assertEqual(self.client.get(reverse("account_information")).status_code, 200)
+        fresh_client = Client()
+        self.assertFalse(fresh_client.login(username=self.user.username, password="Old-Secure-Pass-782!"))
+        self.assertTrue(fresh_client.login(username=self.user.username, password=data["new_password1"]))
 
     def test_password_validation_and_confirmation_are_required(self):
         self.client.force_login(self.user)

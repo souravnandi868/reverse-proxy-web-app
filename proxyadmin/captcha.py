@@ -13,14 +13,18 @@ from django.views.decorators.cache import never_cache
 
 SESSION_KEY = "login_captcha"
 CAPTCHA_LIFETIME = 300
+CAPTCHA_EXCLUDED = frozenset("CcIlPpVvXxZzSsOo")
+CAPTCHA_LOWERCASE = "".join(char for char in string.ascii_lowercase if char not in CAPTCHA_EXCLUDED)
+CAPTCHA_UPPERCASE = "".join(char for char in string.ascii_uppercase if char not in CAPTCHA_EXCLUDED)
+CAPTCHA_CHARACTERS = CAPTCHA_LOWERCASE + CAPTCHA_UPPERCASE + string.digits
 
 
 def new_captcha(request):
     characters = [
-        secrets.choice(string.ascii_lowercase),
-        secrets.choice(string.ascii_uppercase),
+        secrets.choice(CAPTCHA_LOWERCASE),
+        secrets.choice(CAPTCHA_UPPERCASE),
         secrets.choice(string.digits),
-    ] + [secrets.choice(string.ascii_letters + string.digits) for _ in range(3)]
+    ] + [secrets.choice(CAPTCHA_CHARACTERS) for _ in range(3)]
     secrets.SystemRandom().shuffle(characters)
     answer = "".join(characters)
     request.session[SESSION_KEY] = {"answer": answer, "created": time.time()}

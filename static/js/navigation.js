@@ -4,6 +4,9 @@
   let controller;
   let posting = false;
   let pendingHistory = null;
+  const positions = new Map();
+  let renderedURL = window.location.href;
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   const appPath = path => path === '/' || /^\/(proxies|domains|servers|usage|certificates|audit|account|login|logout)\//.test(path);
 
   function notice(message, error = false) {
@@ -18,12 +21,12 @@
     node.textContent = message;
   }
 
-  function render(page) {
+  function render(page, focusHeading = true) {
     if (!page.querySelector('main.main, .login-panel')) throw new Error('Unexpected response');
     document.dispatchEvent(new Event('app:before-render'));
     for (const sheet of page.querySelectorAll('link[rel="stylesheet"]')) {
       if (![...document.querySelectorAll('link[rel="stylesheet"]')].some(existing => existing.href === sheet.href)) {
-        document.head.append(sheet.cloneNode(true));
+        document.head.insertBefore(sheet.cloneNode(true), document.querySelector('[data-app-theme]'));
       }
     }
     // Controllers are loaded once and restarted through lifecycle events.
@@ -40,14 +43,17 @@
     document.title = page.title;
     document.dispatchEvent(new Event('app:navigate'));
     const heading = document.querySelector('h1');
-    if (heading) {
+    if (heading && focusHeading) {
       heading.setAttribute('tabindex', '-1');
       heading.focus({preventScroll: true});
     }
   }
 
-  async function visit(url, {body, method = 'GET', historyMode = 'push'} = {}) {
+  async function visit(url, {body, method = 'GET', historyMode = 'push', preserveScroll = false} = {}) {
     if (posting) return;
+    const source = renderedURL;
+    const originalPosition = {left: window.scrollX, top: window.scrollY};
+    positions.set(source, originalPosition);
     controller?.abort();
     controller = new AbortController();
     const id = ++requestId;
@@ -70,11 +76,21 @@
       if (id !== requestId) return;
       const destination = new URL(response.url || url, window.location.href);
       if (destination.origin !== window.location.origin || !appPath(destination.pathname)) throw new Error('Unexpected destination');
-      render(page);
+      const samePage = destination.pathname === new URL(source).pathname;
+      const authentication = /\/(login|logout)\//.test(new URL(url, source).pathname)
+        || destination.pathname === '/login/';
+      const keepPosition = !authentication && (preserveScroll || samePage || historyMode === 'none');
+      // Redirects after saves, toggles, apply/delete and contact changes are
+      // operations, not requests to jump to the new page's heading.
+      const savedPosition = keepPosition
+        ? ((!samePage && positions.get(destination.href)) || originalPosition) : {left: 0, top: 0};
+      if (keepPosition && window.updateLiveView) window.updateLiveView(() => render(page, false));
+      else render(page, !keepPosition);
       rendered = true;
       if (historyMode === 'none') history.replaceState({}, '', destination);
       else if (destination.href !== window.location.href) history.pushState({}, '', destination);
-      window.scrollTo(0, 0);
+      renderedURL = destination.href;
+      window.scrollTo(savedPosition.left, savedPosition.top);
     } catch (error) {
       if (id !== requestId) return;
       notice(method === 'GET'
@@ -103,13 +119,14 @@
     if (url.origin !== window.location.origin || !appPath(url.pathname) || /\.(pdf|xlsx)$/i.test(url.pathname)
       || (url.hash && url.pathname === window.location.pathname && url.search === window.location.search)) return;
     event.preventDefault();
-    if (!posting) visit(url.href);
+    if (!posting) visit(url.href, {preserveScroll: !link.closest('.sidebar, .account-dropdown')});
   });
 
   // Certificate confirmation runs first; cancelled submissions remain cancelled.
   document.addEventListener('submit', event => {
     if (event.defaultPrevented) return;
     const form = event.target;
+    if (form.hasAttribute('data-download')) return;
     const url = new URL(form.action || window.location.href, window.location.href);
     if (url.origin !== window.location.origin || !appPath(url.pathname)) return;
     event.preventDefault();
@@ -119,9 +136,9 @@
     const method = form.method.toUpperCase();
     if (method === 'GET') {
       url.search = new URLSearchParams(data).toString();
-      visit(url.href);
+      visit(url.href, {preserveScroll: true});
     } else {
-      visit(url.href, {method, body: data});
+      visit(url.href, {method, body: data, preserveScroll: true});
     }
   });
 

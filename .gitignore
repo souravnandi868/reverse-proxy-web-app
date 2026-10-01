@@ -6,3 +6,7 @@ private_media/
 staticfiles/
 .env
 .traffic-collector.lock
+design-preview/
+reverse-proxy-release-*.bundle
+reverse-proxy-release-*.sha256
+reverse-proxy-release-*-INSTALL.txt

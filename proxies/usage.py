@@ -3,6 +3,8 @@ import math
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.db.models import F
+from django.db.models.functions import JSONObject
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
@@ -58,19 +60,32 @@ def summary(seconds, fqdn):
     if fqdn:
         events = events.filter(domain=fqdn)
     total = empty()
-    for domain, occurred, data in events.order_by().values_list("domain", "occurred_at", "data").iterator(chunk_size=1000):
+    # Fetch only chart measurements, not request URLs, headers and user agents.
+    events = events.annotate(measurements=JSONObject(**{
+        key: F("data__" + key)
+        for key in ("status", "received_bytes", "sent_bytes", "request_time")
+    }))
+    grouped = {}
+    for domain, occurred, data in events.order_by().values_list("domain", "occurred_at", "measurements").iterator(chunk_size=1000):
         if not domain:
             continue
-        row = domains.setdefault(domain, empty())
-        add(row, data)
-        add(total, data)
         index = min(len(buckets) - 1, int((occurred - start).total_seconds() // step))
-        add(buckets[index], data)
-    configured = dict(ProxyConfig.objects.values_list("domain_name", "backend_private_ip"))
-    ports = dict(ProxyConfig.objects.values_list("domain_name", "backend_port"))
+        key = (domain, index)
+        if key not in grouped:
+            grouped[key] = empty()
+        add(grouped[key], data)
+    # Validate each request once, then combine the small domain/bucket summaries.
+    for (domain, index), row in grouped.items():
+        if domain not in domains:
+            domains[domain] = empty()
+        for target in (domains[domain], buckets[index], total):
+            for key, value in row.items():
+                target[key] += value
+    configured = {domain: f"{address}:{port}" for domain, address, port in
+                  ProxyConfig.objects.values_list("domain_name", "backend_private_ip", "backend_port")}
     rows = []
     for domain, row in domains.items():
-        row.update(fqdn=domain, backend=f"{configured[domain]}:{ports[domain]}" if domain in configured else "Not configured")
+        row.update(fqdn=domain, backend=configured.get(domain, "Not configured"))
         rows.append(finish(row))
     rows.sort(key=lambda row: (-row["requests"], row["fqdn"]))
     for index, row in enumerate(buckets):
@@ -99,7 +114,7 @@ def metrics(request):
         seconds = int(request.GET.get("seconds", "180"))
     except ValueError:
         seconds = 180
-    if seconds not in (180, 300, 1080):
+    if seconds not in (60, 180, 300, 1080):
         seconds = 180
     fqdn = request.GET.get("fqdn", "").strip().lower().rstrip(".")[:253]
     # Short-lived server cache shares work between viewers; history stays in the DB.

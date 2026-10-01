@@ -41,6 +41,7 @@ def dashboard(request):
         "proxies": proxies,
         "active_count": proxies.filter(enabled=True).count(),
         "certificate_count": active_certificates.count(),
+        "expiry_certificates": active_certificates.order_by("valid_until", "name"),
         "certificate_expiring_count": active_certificates.filter(valid_until__isnull=False, valid_until__lte=expiry_cutoff).count(),
         "traffic_logs": recent_traffic_logs(6),
         "host_monitor_status": {"live": "Live", "stale": "Stale", "waiting": "Waiting"}.get(host["status"], "Not configured") if host else "Not configured",
@@ -243,11 +244,13 @@ def certificate_delete(request, pk):
 @staff_required
 @never_cache
 def audit(request):
+    from .forms import TrafficExportForm
     fqdn = request.GET.get("fqdn", "").strip().lower().rstrip(".")
     return render(request, "proxies/audit.html", {
         **traffic_page(fqdn, request.GET.get("before", "")),
         "selected_fqdn": fqdn,
         "traffic_domains": ProxyConfig.objects.values_list("domain_name", flat=True),
+        "export_form": TrafficExportForm(),
     })
 
 
@@ -264,14 +267,37 @@ def traffic_rows(request):
 @require_GET
 @never_cache
 def traffic_export(request):
+    from itertools import chain
+    from django.utils import timezone
+    from .forms import TrafficExportForm
     from .services import iter_traffic_logs
     from .traffic_excel import build_traffic_excel
 
     fqdn = request.GET.get("fqdn", "").strip().lower().rstrip(".")
+    form = TrafficExportForm(request.GET)
+    # datetime-local inputs have no offset. Interpret them in the labeled zone.
+    with timezone.override("Asia/Kolkata"):
+        valid = form.is_valid()
+    entries = None
+    if valid:
+        entries = iter_traffic_logs(fqdn, form.cleaned_data["start"], form.cleaned_data["end"])
+        first = next(entries, None)
+        if first is None:
+            form.add_error(None, "No retained traffic matches this website and date/time range. "
+                           "Times must be entered in IST (UTC+05:30). Check the visible log dates, "
+                           "try a wider range, and confirm the traffic collector is running.")
+            valid = False
+    if not valid:
+        return render(request, "proxies/audit.html", {
+            **traffic_page(fqdn),
+            "selected_fqdn": fqdn,
+            "traffic_domains": ProxyConfig.objects.values_list("domain_name", flat=True),
+            "export_form": form,
+        }, status=400)
     response = HttpResponse(
-        build_traffic_excel(iter_traffic_logs(fqdn)),
+        build_traffic_excel(chain((first,), entries)),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    filename = "incoming-traffic-filtered.xlsx" if fqdn else "incoming-traffic-all.xlsx"
+    filename = "incoming-traffic-range.xlsx"
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response

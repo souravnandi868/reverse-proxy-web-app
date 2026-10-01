@@ -8,7 +8,7 @@
     <h2>Usage by FQDN</h2>
     <div class="usage-filters">
       <label>Website <select id="usage-fqdn"><option value="">All websites</option>{% for domain in domains %}<option value="{{ domain }}">{{ domain }}</option>{% endfor %}</select></label>
-      <label>Graph range <select id="usage-range"><option value="180">Last 3 minutes</option><option value="300">Last 5 minutes</option><option value="1080">Last 18 minutes</option></select></label>
+      <label>Graph range <select id="usage-range"><option value="60">Last 1 minute</option><option value="180" selected>Last 3 minutes</option><option value="300">Last 5 minutes</option><option value="1080">Last 18 minutes</option></select></label>
     </div>
     <details class="usage-notes"><summary>About these measurements</summary><p>Based on up to 100,000 retained requests. Collector delays or downtime can leave gaps. Unavailable byte measurements are not shown as zero. Backend addresses identify configured destinations; CPU, RAM and disk usage require separate monitoring and are not inferred from traffic.</p></details>
     <p id="usage-status" role="status">Loading usage…</p>

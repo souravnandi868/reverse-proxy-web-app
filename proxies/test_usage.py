@@ -51,6 +51,21 @@ class UsageTests(TestCase):
         self.assertEqual(data["total"]["response_ms"], 200)
         self.assertEqual(data["total"]["requests"], 2)
 
+    def test_projection_preserves_invalid_types_and_combines_buckets(self):
+        self.event(received_bytes="100", sent_bytes=False, request_time=".2", status="500")
+        self.event(ago=25, status=404)
+        self.event("two.example", ago=25)
+        with patch("proxies.usage.timezone.now", return_value=self.now), self.assertNumQueries(2):
+            data = summary(180, "")
+        self.assertEqual(data["total"]["requests"], 3)
+        self.assertEqual(data["total"]["errors"], 1)
+        self.assertEqual(data["total"]["error_percent"], 50)
+        self.assertEqual(data["total"]["response_ms"], 200)
+        self.assertIsNone(data["total"]["rx"])
+        self.assertIsNone(data["total"]["tx"])
+        self.assertEqual(data["series"][-3]["requests"], 2)
+        self.assertEqual(data["series"][-3]["rx"], 200)
+
     def test_staff_only_page_and_metrics(self):
         for path in ("/usage/", "/usage/metrics/"):
             self.assertEqual(self.client.get(path).status_code, 302)

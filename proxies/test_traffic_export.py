@@ -2,6 +2,7 @@ import json
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -9,6 +10,7 @@ from openpyxl import load_workbook
 
 from .services import recent_traffic_logs
 from .traffic_reader import TrafficReader
+from .models import TrafficEvent
 
 
 class TrafficExportTests(TestCase):
@@ -29,7 +31,8 @@ class TrafficExportTests(TestCase):
         TrafficReader(self.directory.name).poll()
 
     def workbook_rows(self, query=""):
-        response = self.client.get("/audit/export.xlsx" + query)
+        dates = urlencode({"start": "2026-09-13T00:00:00", "end": "2026-09-15T00:00:00"})
+        response = self.client.get("/audit/export.xlsx?" + dates + "&" + query.lstrip("?"))
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response["Content-Disposition"])
         self.assertIn("no-store", response["Cache-Control"])
@@ -56,7 +59,33 @@ class TrafficExportTests(TestCase):
         self.assertEqual(filtered[1][4].value, "=1+1")
         self.assertEqual(filtered[1][4].data_type, "s")
         self.assertNotIn("\x01", filtered[1][8].value)
-        self.assertEqual(len(self.workbook_rows("?fqdn=missing.example.org")), 1)
+        response = self.client.get("/audit/export.xlsx", {
+            "start": "2026-09-13T00:00", "end": "2026-09-15T00:00", "fqdn": "missing.example.org",
+        })
+        self.assertContains(response, "No retained traffic matches", status_code=400)
+        self.assertNotIn("Content-Disposition", response)
+
+    def test_export_uses_log_time_when_timestamp_index_is_missing(self):
+        TrafficEvent.objects.update(occurred_at=None)
+        # This simulates an older collector still running after the schema update.
+        self.assertEqual(len(self.workbook_rows()), 122)
+        response = self.client.get("/audit/export.xlsx", {
+            "start": "2026-09-14T17:30:30", "end": "2026-09-14T17:30:32",
+            "fqdn": "busy.example.org",
+        })
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content))
+        self.addCleanup(workbook.close)
+        self.assertEqual(workbook.active.max_row, 4)
+
+    def test_unknown_timestamps_do_not_bypass_date_filter(self):
+        TrafficEvent.objects.all().delete()
+        for value in ("invalid", "2026-09-14T12:00:00", "2026-99-99T00:00:00Z"):
+            TrafficEvent.objects.create(domain="busy.example.org", data={"time": value})
+        response = self.client.get("/audit/export.xlsx", {
+            "start": "2026-09-13T00:00", "end": "2026-09-15T00:00",
+        })
+        self.assertContains(response, "No retained traffic matches", status_code=400)
 
     def test_export_permissions_and_method(self):
         self.assertEqual(self.client.post("/audit/export.xlsx").status_code, 405)
@@ -66,3 +95,27 @@ class TrafficExportTests(TestCase):
         self.user.save()
         self.client.force_login(self.user)
         self.assertEqual(self.client.get("/audit/export.xlsx").status_code, 403)
+
+    def test_inclusive_range_converts_ist_and_filters_before_export(self):
+        response = self.client.get("/audit/export.xlsx", {
+            "start": "2026-09-14T17:30:30", "end": "2026-09-14T17:30:32",
+            "fqdn": "BUSY.EXAMPLE.ORG.",
+        })
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content))
+        self.addCleanup(workbook.close)
+        rows = list(workbook.active.values)
+        self.assertEqual(len(rows), 4)
+        self.assertEqual({row[0] for row in rows[1:]}, {
+            "2026-09-14T12:00:30Z", "2026-09-14T12:00:31Z", "2026-09-14T12:00:32Z",
+        })
+
+    def test_missing_invalid_or_reversed_ranges_do_not_download(self):
+        for dates in ({}, {"start": "bad", "end": "2026-09-15T00:00"},
+                      {"start": "2026-09-15T00:00", "end": "2026-09-14T00:00"},
+                      {"start": "2026-09-15T00:00"}):
+            with self.subTest(dates=dates):
+                response = self.client.get("/audit/export.xlsx", dates)
+                self.assertEqual(response.status_code, 400)
+                self.assertTrue(response.context["export_form"].errors)
+                self.assertNotIn("Content-Disposition", response)

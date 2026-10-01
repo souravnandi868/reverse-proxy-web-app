@@ -1,0 +1,16 @@
+/* Extend native admin components and retain its light/dark preference. */
+:root, html[data-theme="light"] {--primary: #315eaa; --secondary: #142b4c; --accent: #dbeafe; --link-fg: #2563b9; --button-bg: #315eaa; --button-hover-bg: #234983; --default-button-bg: #2864dc; --default-button-hover-bg: #1d50bd; --font-family-primary: "Segoe UI", Arial, sans-serif;}
+html[data-theme="light"] {--body-bg: #f3f6fb; --body-fg: #273b56; --hairline-color: #e3e9f1; --border-color: #dbe3ee; --darkened-bg: #edf2f8;}
+#header {padding: 20px 32px;}
+#site-name {font-size: 19px; font-weight: 600; letter-spacing: -.4px;}
+.admin-brand-caption {font-size: 12px; color: #b6c7e0; font-weight: 400; margin-left: 10px;}
+div.breadcrumbs {padding: 14px 32px; font-size: 12px;}
+#content h1 {font-size: 25px; font-weight: 600; letter-spacing: -.5px;}
+.module, .inline-group, .submit-row {border: 1px solid var(--hairline-color); border-radius: 10px; overflow: hidden;}
+.module h2, .module caption, .inline-group h2 {padding: 13px 16px; font-weight: 600;}
+.module td, .module th {padding: 13px 16px;}
+.button, input[type=submit], input[type=button], .submit-row input, a.button {border-radius: 7px; padding: 11px 16px;}
+input, textarea, select {border-radius: 6px; padding: 8px 10px;}
+#changelist-filter {border-radius: 10px; overflow: hidden;}
+#user-tools {font-size: 11px; line-height: 1.8;}
+@media(max-width: 767px) {#header {padding: 18px;} .admin-brand-caption {display: block; margin: 4px 0 0;} div.breadcrumbs {padding: 12px 18px;}}

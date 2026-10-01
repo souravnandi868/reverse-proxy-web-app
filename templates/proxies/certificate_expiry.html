@@ -1,0 +1,1 @@
+{% with expiry=certificate.expiry %}<span class="certificate-expiry expiry-{{ expiry.state }}"><b>{{ certificate.valid_until|date:'Y-m-d'|default:'Not recorded' }}</b><small>{{ expiry.label }}</small></span>{% endwith %}

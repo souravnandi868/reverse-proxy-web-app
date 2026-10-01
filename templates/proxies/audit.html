@@ -11,11 +11,15 @@
       <button class="button primary" type="submit">Filter</button>
       <a class="button" href="{% url 'audit' %}">Show all</a>
     </form>
-    <div class="traffic-exports">
-      <a class="button" download href="{% url 'traffic_export' %}?fqdn={{ selected_fqdn|urlencode }}">Export current view to Excel</a>
-      <a class="button" download href="{% url 'traffic_export' %}">Export all to Excel</a>
-    </div>
   </div>
+  <form method="get" action="{% url 'traffic_export' %}" class="traffic-export-form" data-download>
+    <h2>Export traffic by date and time</h2>
+    <p>Times are in IST (UTC+05:30). Includes both endpoints and all retained matching requests. Older requests may no longer be available.</p>
+    <p>Website: {{ selected_fqdn|default:"All websites" }}</p>
+    <input type="hidden" name="fqdn" value="{{ selected_fqdn }}">
+    {{ export_form.as_p }}
+    <button class="button" type="submit">Export range to Excel</button>
+  </form>
   {% if before %}<a class="button" href="{% url 'audit' %}?fqdn={{ selected_fqdn|urlencode }}">Back to live traffic</a>{% endif %}
 </section>
 <p id="traffic-refresh-status" role="status" hidden></p>
