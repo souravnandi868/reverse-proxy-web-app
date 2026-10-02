@@ -5,7 +5,6 @@ from datetime import timedelta
 from urllib.parse import unquote, urlencode
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.contrib.staticfiles import finders
 from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import F
@@ -22,6 +21,8 @@ from .captive_models import CaptivePortalUser, CaptiveOTP, CaptiveSession, Capti
 from .captive_sms import deliver
 
 COOKIE = "__Host-captive_session"
+CAPTIVE_CAPTCHA_LAST_KEY = "captive_captcha_last"
+CAPTIVE_CAPTCHA_PREFIX = "captive_captcha:"
 GENERIC = "If the information is registered and authorized, an OTP has been sent to the registered mobile number."
 
 
@@ -136,11 +137,20 @@ def entry(request):
 
 
 def page(request, **context):
+    captcha_token = secrets.token_urlsafe(32)
+    captcha_svg = new_captcha(request, inline=True, session_key=CAPTIVE_CAPTCHA_LAST_KEY)
+    # Separate form challenges from console login and other portal tabs. Keep
+    # only a bounded number in the session; tokens never contain the answer.
+    keys = [key for key in request.session.keys() if key.startswith(CAPTIVE_CAPTCHA_PREFIX)]
+    for key in keys[:-7]:
+        request.session.pop(key, None)
+    request.session[CAPTIVE_CAPTCHA_PREFIX + captcha_token] = {
+        **request.session[CAPTIVE_CAPTCHA_LAST_KEY], "proxy_id": request.captive_proxy.pk}
     return render(request, "captive/login.html", {
         "proxy": request.captive_proxy, "next": local_next(request.POST.get("next", request.GET.get("next"))),
         "session": current_session(request), "expiry": settings.CAPTIVE_OTP_EXPIRY_SECONDS,
         "cooldown": settings.CAPTIVE_RESEND_SECONDS,
-        "captcha_image": new_captcha(request),
+        "captcha_svg": captcha_svg, "captcha_token": captcha_token,
         "identifier": request.POST.get("identifier", ""), **context})
 
 
@@ -150,22 +160,16 @@ def login(request):
     return page(request)
 
 
-@require_GET
-@never_cache
-def logo(request):
-    path = finders.find("images/kolkata-police-logo.png")
-    if not path:
-        return HttpResponse(status=404)
-    with open(path, "rb") as image:
-        return HttpResponse(image.read(), content_type="image/png")
-
-
 @require_POST
 @never_cache
 @sensitive_post_parameters()
 @sensitive_variables()
 def send_otp(request):
-    if not validate_captcha(request, request.POST.get("captcha", "")):
+    captcha_token = request.POST.get("captcha_token", "")
+    captcha_key = CAPTIVE_CAPTCHA_PREFIX + captcha_token
+    challenge = request.session.get(captcha_key, {}) if len(captcha_token) == 43 else {}
+    if (challenge.get("proxy_id") != request.captive_proxy.pk
+            or not validate_captcha(request, request.POST.get("captcha", ""), session_key=captcha_key)):
         return page(request, error="Enter the image code exactly as shown.")
     identifier = request.POST.get("identifier", "").strip()
     if len(identifier) > 254:
@@ -219,7 +223,7 @@ def send_otp(request):
                 record = None
         if record:
             try:
-                deliver(user.mobile_number, otp)
+                deliver(user.mobile_number, otp, request.captive_proxy.domain_name)
             except Exception:
                 # Never log gateway exceptions: they may embed credentials / payloads.
                 CaptiveOTP.objects.filter(pk=record.pk).update(consumed_at=timezone.now())

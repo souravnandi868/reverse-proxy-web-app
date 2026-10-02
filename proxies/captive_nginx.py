@@ -39,7 +39,7 @@ def locations(proxy):
         add_header Cache-Control "no-store" always;
 '''
     result = ""
-    for endpoint in ("login", "logo", "send-otp", "verify-otp", "logout", "status"):
+    for endpoint in ("login", "send-otp", "verify-otp", "logout", "status"):
         result += f'''    location = /_captive/{endpoint}/ {{
         auth_request off;
         client_max_body_size 8k;

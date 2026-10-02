@@ -11,16 +11,27 @@ from django.views.decorators.debug import sensitive_variables
 class GatewayAdapter:
     """Kolkata Police form-encoded SMS API adapter."""
 
-    def build_request(self, *, path, mobile, otp):
+    def build_request(self, *, path, mobile, otp, domain=None):
         """Return the provider's unauthenticated POST form request."""
         if not mobile.startswith("+91") or len(mobile) != 13 or not mobile[3:].isdigit():
             raise ImproperlyConfigured("SMS gateway requires a normalized Indian mobile number.")
         if len(otp) != 6 or not otp.isdigit():
             raise ImproperlyConfigured("SMS OTP must contain six digits.")
+        domain = domain or "the zimbra mail"
+        if len(domain) > 253 or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.- " for c in domain):
+            raise ImproperlyConfigured("SMS OTP requires a valid captive portal domain.")
         template = settings.CAPTIVE_SMS_MESSAGE_TEMPLATE
         if template.count("{#var#}") != 1:
             raise ImproperlyConfigured("SMS message template must contain exactly one {#var#} placeholder.")
+        if template.count("{domain}") > 1:
+            raise ImproperlyConfigured("SMS message template must contain exactly one {domain} placeholder.")
         message = template.replace("{#var#}", otp)
+        if "{domain}" in message:
+            message = message.replace("{domain}", domain)
+        elif domain != "zimbra mail":
+            # Keep older environment templates compatible while removing the
+            # fixed product name from messages sent for a specific portal.
+            message = message.replace("the zimbra mail", domain).replace("zimbra mail", domain)
         body = urlencode({"mobileno": mobile[3:], "message": message}).encode("ascii")
         return "POST", path, {"Content-Type": "application/x-www-form-urlencoded"}, body
 
@@ -37,7 +48,7 @@ class GatewayAdapter:
 
 
 class DevelopmentSMS:
-    def send(self, mobile, otp):
+    def send(self, mobile, otp, domain=None):
         # Deliberately no console output, log, filesystem or plaintext outbox.
         if not settings.DEBUG:
             raise ImproperlyConfigured("Development SMS requires DEBUG.")
@@ -45,14 +56,14 @@ class DevelopmentSMS:
 
 class HTTPSMS:
     @sensitive_variables()
-    def send(self, mobile, otp):
+    def send(self, mobile, otp, domain=None):
         url = urlsplit(settings.CAPTIVE_SMS_API_URL)
         if url.scheme != "https" or not url.hostname or url.username or url.password or url.fragment:
             raise ImproperlyConfigured("SMS gateway must be an HTTPS URL without credentials or fragment.")
         adapter = import_string(settings.CAPTIVE_SMS_HTTP_ADAPTER)()
         method, path, headers, body = adapter.build_request(
             path=(url.path or "/") + ("?" + url.query if url.query else ""),
-            mobile=mobile, otp=otp)
+            mobile=mobile, otp=otp, domain=domain)
         if not isinstance(path, str) or not path.startswith("/") or path.startswith("//") or any(ord(c) < 32 for c in path):
             raise ImproperlyConfigured("Gateway adapter must return a local request path.")
         conn = http.client.HTTPSConnection(url.hostname, url.port, timeout=5)
@@ -70,8 +81,11 @@ class HTTPSMS:
 
 
 @sensitive_variables()
-def deliver(destination, otp):
+def deliver(destination, otp, domain=None):
     backend = {"http": HTTPSMS, "development": DevelopmentSMS}.get(settings.CAPTIVE_SMS_BACKEND)
     if backend is None:
         raise ImproperlyConfigured("Configure CAPTIVE_SMS_BACKEND.")
-    backend().send(destination, otp)
+    if domain is None:
+        backend().send(destination, otp)
+    else:
+        backend().send(destination, otp, domain)

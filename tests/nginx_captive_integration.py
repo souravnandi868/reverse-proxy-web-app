@@ -87,8 +87,7 @@ def main():
         bundle = CertificateBundle.objects.create(name="integration", certificate="cert.pem", private_key="key.pem", uploaded_by=admin)
         proxy = ProxyConfig.objects.create(domain_name="app.example.com", backend_private_ip="127.0.0.1", backend_port=backend.server_port,
             captive_portal_enabled=True, websocket_enabled=True, certificate_bundle=bundle, created_by=admin, updated_by=admin)
-        user = CaptivePortalUser.objects.create(name="Integration", section="Test", rank="Test", mobile_number="9876543210",
-                                               email_address="integration@example.com", all_fqdns=True)
+        user = CaptivePortalUser.objects.create(name="Integration", section="Test", rank="Test", mobile_number="9876543210", all_fqdns=True)
         config = render_proxy_config(proxy).replace("listen 443 ssl;", f"listen 127.0.0.1:{port} ssl;")
         config = config.replace("/var/log/nginx/proxy-admin/", root.as_posix() + "/logs/")
         config = config.replace(str(root), root.as_posix()).replace("\\cert.pem", "/cert.pem").replace("\\key.pem", "/key.pem")
@@ -124,10 +123,6 @@ def main():
             connection.close()
             return result
 
-        def captcha_answer(session_key=None):
-            from django.contrib.sessions.backends.db import SessionStore
-            return SessionStore(session_key=session_key or cookies["sessionid"].value).load()["login_captcha"]["answer"]
-
         try:
             for attempt in range(50):
                 try:
@@ -146,11 +141,11 @@ def main():
             assert status == 200
             csrf = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', content).group(1)
             with patch("proxies.captive.deliver") as deliver:
-                status, _, content = request("/_captive/send-otp/", {"csrfmiddlewaretoken": csrf, "identifier": "9876543210", "captcha": captcha_answer()})
+                status, _, content = request("/_captive/send-otp/", {"csrfmiddlewaretoken": csrf, "destination": "9876543210"})
             assert status == 200 and deliver.called
             challenge = re.search(r'name="challenge" value="([^"]+)"', content).group(1)
             status, headers, _ = request("/_captive/verify-otp/", {"csrfmiddlewaretoken": csrf, "challenge": challenge,
-                "otp": deliver.call_args.args[1], "identifier": "9876543210", "next": "/reports?x=1&y=two%20words"})
+                "otp": deliver.call_args.args[2], "next": "/reports?x=1&y=two%20words"})
             assert status == 302 and headers["Location"] == "/reports?x=1&y=two%20words"
             cookies["backend_cookie"] = "preserved"
             status, _, content = request(headers["Location"])
@@ -177,13 +172,11 @@ def main():
                     page.get_by_role("button", name="Switch color theme").click()
                     assert page.locator("html").get_attribute("data-console-theme") == "light"
                     page.get_by_label("Registered mobile number or email address").fill("9876543210")
-                    browser_session = next(cookie["value"] for cookie in page.context.cookies() if cookie["name"] == "sessionid")
-                    page.get_by_label("Image code", exact=True).fill(captcha_answer(browser_session))
                     with patch("proxies.captive.deliver") as deliver:
                         page.get_by_role("button", name="Send OTP", exact=True).click()
                         expect(page.get_by_label("Six-digit verification code")).to_be_visible()
                     expect(page.get_by_role("button", name="Send OTP", exact=True)).to_be_disabled()
-                    page.get_by_label("Six-digit verification code").fill(deliver.call_args.args[1])
+                    page.get_by_label("Six-digit verification code").fill(deliver.call_args.args[2])
                     page.get_by_role("button", name="Verify and continue").click()
                     expect(page.locator("body")).to_contain_text('"path": "/reports?browser=1"')
                     browser.close()
