@@ -6,6 +6,7 @@ from proxies import captive
 
 urlpatterns = [
     path("_captive/login/", captive.login),
+    path("_captive/logo/", captive.logo),
     path("_captive/send-otp/", captive.send_otp),
     path("_captive/verify-otp/", captive.verify_otp),
     path("_captive/logout/", captive.logout),

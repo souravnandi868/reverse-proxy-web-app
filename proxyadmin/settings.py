@@ -38,7 +38,7 @@ TEMPLATES = [{
     ]},
 }]
 WSGI_APPLICATION = "proxyadmin.wsgi.application"
-DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
+DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": os.environ.get("DJANGO_DB_PATH", BASE_DIR / "db.sqlite3")}}
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -73,7 +73,7 @@ SESSION_COOKIE_SECURE = SECURE_SSL_REDIRECT
 CSRF_COOKIE_SECURE = SECURE_SSL_REDIRECT
 
 # Captive ingress must only be reachable by the local NGINX service.
-CAPTIVE_ADMIN_UPSTREAM = os.environ.get("CAPTIVE_ADMIN_UPSTREAM", "http://127.0.0.1:8000")
+CAPTIVE_ADMIN_UPSTREAM = os.environ.get("CAPTIVE_ADMIN_UPSTREAM", "http://127.0.0.1:8001")
 CAPTIVE_SMS_BACKEND = os.environ.get("CAPTIVE_SMS_BACKEND", "disabled")
 CAPTIVE_SMS_API_URL = os.environ.get("CAPTIVE_SMS_API_URL", "")
 CAPTIVE_SMS_HTTP_ADAPTER = os.environ.get("CAPTIVE_SMS_HTTP_ADAPTER", "proxies.captive_sms.GatewayAdapter")

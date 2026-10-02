@@ -273,8 +273,9 @@ production Python dependencies are required.
 | --- | --- |
 | `DJANGO_SECRET_KEY` | A unique high-entropy production secret shared by this application's workers; never the development default |
 | `DJANGO_DEBUG` | `false` in production |
+| `DJANGO_DB_PATH` | `/var/lib/proxy-admin/db.sqlite3` in production; local checkout database when unset |
 | `DJANGO_ALLOWED_HOSTS` | Explicit console hostname **and every captive FQDN**, comma-separated; no wildcard |
-| `CAPTIVE_ADMIN_UPSTREAM` | Private Django listener; default `http://127.0.0.1:8000`; only loopback HTTP URLs are accepted |
+| `CAPTIVE_ADMIN_UPSTREAM` | Private Django listener; default `http://127.0.0.1:8001`; only loopback HTTP URLs are accepted |
 | `CAPTIVE_SMS_BACKEND` | `http` in production; default `disabled` fails closed; `development` silently discards delivery and requires DEBUG |
 | `CAPTIVE_SMS_API_URL` | `https://api.kolkatapolice.org/crimebabuapp/Api_sms/send_sms` |
 | `CAPTIVE_SMS_HTTP_ADAPTER` | `proxies.captive_sms.GatewayAdapter` (default) |

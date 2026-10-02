@@ -5,6 +5,7 @@ from datetime import timedelta
 from urllib.parse import unquote, urlencode
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.contrib.staticfiles import finders
 from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import F
@@ -15,6 +16,7 @@ from django.utils.crypto import constant_time_compare, salted_hmac
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.decorators.http import require_GET, require_POST
+from proxyadmin.captcha import new_captcha, validate_captcha
 from .models import ProxyConfig
 from .captive_models import CaptivePortalUser, CaptiveOTP, CaptiveSession, CaptiveRateLimit, CaptiveAudit, normalize_mobile
 from .captive_sms import deliver
@@ -138,6 +140,7 @@ def page(request, **context):
         "proxy": request.captive_proxy, "next": local_next(request.POST.get("next", request.GET.get("next"))),
         "session": current_session(request), "expiry": settings.CAPTIVE_OTP_EXPIRY_SECONDS,
         "cooldown": settings.CAPTIVE_RESEND_SECONDS,
+        "captcha_image": new_captcha(request),
         "identifier": request.POST.get("identifier", ""), **context})
 
 
@@ -147,11 +150,23 @@ def login(request):
     return page(request)
 
 
+@require_GET
+@never_cache
+def logo(request):
+    path = finders.find("images/kolkata-police-logo.png")
+    if not path:
+        return HttpResponse(status=404)
+    with open(path, "rb") as image:
+        return HttpResponse(image.read(), content_type="image/png")
+
+
 @require_POST
 @never_cache
 @sensitive_post_parameters()
 @sensitive_variables()
 def send_otp(request):
+    if not validate_captcha(request, request.POST.get("captcha", "")):
+        return page(request, error="Enter the image code exactly as shown.")
     identifier = request.POST.get("identifier", "").strip()
     if len(identifier) > 254:
         identifier = ""

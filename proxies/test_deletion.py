@@ -19,6 +19,23 @@ spec.loader.exec_module(ops)
 
 
 class ProxyDeletionTests(TransactionTestCase):
+    def test_apply_and_rollback_validation_failure_restore_previous_config(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            target = root / "app.example.com.conf"
+            original = b"previous configuration"
+            for action in ("apply", "rollback"):
+                with self.subTest(action=action):
+                    target.write_bytes(original)
+                    with patch.object(ops, "NGINX_DIR", root), patch.object(ops, "LOG_DIR", root), patch.object(
+                        ops.subprocess, "run", return_value=SimpleNamespace(returncode=1)) as command:
+                        ok, message = ops.handle({"action": action, "payload": {"domain": "app.example.com",
+                            "config": "# Managed by NGINX Proxy Admin.\nnew configuration"}})
+                    self.assertFalse(ok)
+                    self.assertIn("validation failed", message)
+                    self.assertEqual(target.read_bytes(), original)
+                    command.assert_called_once()
+
     def setUp(self):
         self.directory = TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

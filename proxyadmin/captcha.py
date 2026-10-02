@@ -46,6 +46,13 @@ def new_captcha(request):
     return f"data:image/svg+xml;base64,{encoded}"
 
 
+def validate_captcha(request, value):
+    challenge = request.session.pop(SESSION_KEY, None)
+    value = (value or "").strip()
+    return bool(challenge and time.time() - challenge["created"] <= CAPTCHA_LIFETIME
+                and hmac.compare_digest(value, challenge["answer"]))
+
+
 class CaptchaAuthenticationForm(AuthenticationForm):
     captcha = forms.CharField(
         label="Image code", required=False, max_length=6,
@@ -53,12 +60,9 @@ class CaptchaAuthenticationForm(AuthenticationForm):
     )
 
     def clean_captcha(self):
-        challenge = self.request.session.pop(SESSION_KEY, None)
-        value = self.cleaned_data.get("captcha", "").strip()
-        if (not challenge or time.time() - challenge["created"] > CAPTCHA_LIFETIME
-                or not hmac.compare_digest(value, challenge["answer"])):
+        if not validate_captcha(self.request, self.cleaned_data.get("captcha", "")):
             raise forms.ValidationError("Enter the image code exactly as shown. A new code is ready below.")
-        return value
+        return self.cleaned_data.get("captcha", "").strip()
 
 
 @method_decorator(never_cache, name="dispatch")

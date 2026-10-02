@@ -48,6 +48,12 @@ class CaptivePortalUser(models.Model):
         return self.name
 
     def clean(self):
+        if not self.deleted_at:
+            for field in ("name", "section", "rank"):
+                value = (getattr(self, field) or "").strip()
+                if not value:
+                    raise ValidationError({field: "This field is required."})
+                setattr(self, field, value)
         self.mobile_number = normalize_mobile(self.mobile_number) if self.mobile_number else None
         self.email_address = (self.email_address or "").strip().lower() or None
         if self.email_address:

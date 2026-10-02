@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from proxyadmin.captcha import SESSION_KEY
 from .captive import COOKIE, GENERIC, digest, local_next, route_key, limit
 from .captive_admin import AuthorizedUserForm
 from .captive_models import CaptivePortalUser, CaptiveOTP, CaptiveSession, CaptiveAudit, CaptiveRateLimit
@@ -27,8 +28,14 @@ class CaptiveTests(TestCase):
         self.client = Client(HTTP_HOST=self.proxy.domain_name, HTTP_X_CAPTIVE_KEY=route_key(self.proxy.domain_name), HTTP_X_CAPTIVE_IP="192.0.2.10")
 
     def send(self, identifier="9999999999"):
-        with patch("proxies.captive.deliver") as delivery:
-            response = self.client.post("/_captive/send-otp/", {"identifier": identifier, "next": "/reports?a=1&b=two%20words"})
+        challenge = self.client.session.get(SESSION_KEY)
+        if not challenge:
+            self.client.get("/_captive/login/")
+            challenge = self.client.session[SESSION_KEY]
+        with patch("proxies.captive.deliver") as delivery, patch("smtplib.SMTP") as smtp, patch("smtplib.SMTP_SSL") as smtp_ssl:
+            response = self.client.post("/_captive/send-otp/", {"identifier": identifier, "captcha": challenge["answer"], "next": "/reports?a=1&b=two%20words"})
+        smtp.assert_not_called()
+        smtp_ssl.assert_not_called()
         return response, delivery
 
     def authenticate(self, identifier="9999999999"):
@@ -56,6 +63,40 @@ class CaptiveTests(TestCase):
         self.assertNotIn('"request":"$request"', config)
         self.assertNotIn("$http_authorization", config)
 
+    def test_default_captive_upstream_uses_production_listener(self):
+        import os
+        import runpy
+        from pathlib import Path
+        with patch.dict(os.environ, {}, clear=True):
+            defaults = runpy.run_path(str(Path(__file__).resolve().parents[1] / "proxyadmin" / "settings.py"))
+        self.assertEqual(defaults["CAPTIVE_ADMIN_UPSTREAM"], "http://127.0.0.1:8001")
+        with override_settings(CAPTIVE_ADMIN_UPSTREAM=defaults["CAPTIVE_ADMIN_UPSTREAM"]):
+            config = render_proxy_config(self.proxy)
+        self.assertIn("proxy_pass http://127.0.0.1:8001;", config)
+        self.assertNotIn("127.0.0.1:8000", config)
+
+    def test_otp_secrets_hash_expiry_and_no_plaintext_response(self):
+        with patch("proxies.captive.secrets.randbelow", return_value=123456) as random_otp:
+            response, delivery = self.send()
+        self.assertEqual(sum(call.args == (1000000,) for call in random_otp.call_args_list), 1)
+        self.assertEqual(delivery.call_args.args[1], "123456")
+        self.assertNotContains(response, "123456")
+        record = CaptiveOTP.objects.get()
+        self.assertEqual(record.otp_hash, digest(response.context["challenge"] + ":123456", "otp"))
+        self.assertNotIn("123456", record.otp_hash)
+        self.assertNotEqual(record.challenge_hash, response.context["challenge"])
+        self.assertAlmostEqual((record.expires_at - record.created_at).total_seconds(), 300, delta=2)
+
+    def test_public_form_has_no_delivery_channel_or_external_assets(self):
+        response = self.client.get("/_captive/login/")
+        self.assertContains(response, 'name="identifier"', count=1)
+        self.assertNotContains(response, 'name="channel"')
+        self.assertNotContains(response, "<select")
+        self.assertContains(response, 'src="/_captive/logo/"')
+        self.assertContains(response, '>Kolkata Police</span>')
+        self.assertNotContains(response, 'src="http')
+        self.assertNotContains(response, 'href="http')
+
     def test_ingress_rejects_forged_headers_and_unregistered_host(self):
         self.assertEqual(Client(HTTP_HOST="app.example.com").get("/_captive/login/").status_code, 404)
         self.assertEqual(self.client.get("/_captive/login/", HTTP_HOST="other.example.com").status_code, 404)
@@ -75,7 +116,23 @@ class CaptiveTests(TestCase):
         self.assertIn("no-store", response["Cache-Control"])
         self.assertEqual(response["Referrer-Policy"], "same-origin")
         self.assertNotIn("https://", response.content.decode())
+        logo = self.client.get("/_captive/logo/")
+        self.assertEqual(logo.status_code, 200)
+        self.assertEqual(logo["Content-Type"], "image/png")
         self.assertEqual(self.client.get("/_captive/status/").status_code, 401)
+
+    def test_captcha_required_before_otp_send(self):
+        self.client.get("/_captive/login/")
+        answer = self.client.session[SESSION_KEY]["answer"]
+        with patch("proxies.captive.deliver") as delivery:
+            response = self.client.post("/_captive/send-otp/", {"identifier": "9999999999", "captcha": "wrong"})
+        self.assertFalse(delivery.called)
+        self.assertContains(response, "Enter the image code exactly as shown.")
+        answer = self.client.session[SESSION_KEY]["answer"]
+        with patch("proxies.captive.deliver") as delivery:
+            response = self.client.post("/_captive/send-otp/", {"identifier": "9999999999", "captcha": answer})
+        self.assertTrue(delivery.called)
+        self.assertEqual(response.context["message"], GENERIC)
 
     def test_valid_sms_cookie_hash_and_one_time_use(self):
         response = self.authenticate()
@@ -188,8 +245,10 @@ class CaptiveTests(TestCase):
             self.assertFalse(delivery.called)
 
     def test_gateway_failure_cannot_verify(self):
+        self.client.get("/_captive/login/")
+        answer = self.client.session[SESSION_KEY]["answer"]
         with patch("proxies.captive.deliver", side_effect=RuntimeError("secret payload")), patch("proxies.captive.secrets.randbelow", return_value=123456):
-            response = self.client.post("/_captive/send-otp/", {"identifier": "9999999999"})
+            response = self.client.post("/_captive/send-otp/", {"identifier": "9999999999", "captcha": answer})
         self.assertNotContains(response, "secret payload")
         response = self.client.post("/_captive/verify-otp/", {"challenge": response.context["challenge"], "otp": "123456", "identifier": "9999999999"})
         self.assertEqual(response.status_code, 200)
@@ -267,9 +326,10 @@ class CaptiveTests(TestCase):
         self.assertEqual(client.post("/_captive/send-otp/", {"identifier": "9999999999"}).status_code, 403)
         response = client.get("/_captive/login/")
         token = response.cookies["csrftoken"].value
+        captcha = client.session[SESSION_KEY]["answer"]
         self.assertTrue(response.cookies["csrftoken"]["secure"])
         with patch("proxies.captive.deliver"):
-            response = client.post("/_captive/send-otp/", {"identifier": "9999999999", "csrfmiddlewaretoken": token}, HTTP_ORIGIN="https://app.example.com")
+            response = client.post("/_captive/send-otp/", {"identifier": "9999999999", "captcha": captcha, "csrfmiddlewaretoken": token}, HTTP_ORIGIN="https://app.example.com")
         self.assertEqual(response.status_code, 200)
 
     def test_open_redirects_and_captive_loops(self):
@@ -278,6 +338,13 @@ class CaptiveTests(TestCase):
         self.assertEqual(local_next("/a?x=1&y=a%20b"), "/a?x=1&y=a%20b")
 
     def test_registration_validation(self):
+        valid_data = {"name": "Name", "rank": "Rank", "section": "IT",
+                      "mobile_number": "8765432109", "email_address": "new@example.com"}
+        for field in ("name", "rank", "section", "mobile_number", "email_address"):
+            with self.subTest(missing=field):
+                self.assertFalse(AuthorizedUserForm({**valid_data, field: ""}).is_valid())
+                with self.assertRaises(ValidationError):
+                    CaptivePortalUser.objects.create(**{**valid_data, field: ""})
         for contacts in ({"mobile_number": "8765432109", "email_address": "new@example.com"},):
             form = AuthorizedUserForm({"name": "Name", "rank": "Rank", "section": "IT", **contacts})
             self.assertTrue(form.is_valid(), form.errors)
@@ -287,7 +354,7 @@ class CaptiveTests(TestCase):
             form = AuthorizedUserForm({"name": "Name", "rank": "Rank", "section": "IT", **contacts})
             self.assertFalse(form.is_valid(), contacts)
         duplicate_mobile = AuthorizedUserForm({"name": "Other", "rank": "Rank", "section": "IT",
-            "mobile_number": "+91 83358 52826", "email_address": "other@example.com"})
+            "mobile_number": "+91 99999 99999", "email_address": "other@example.com"})
         duplicate_email = AuthorizedUserForm({"name": "Other", "rank": "Rank", "section": "IT",
             "mobile_number": "8765432109", "email_address": "TEST@EXAMPLE.COM"})
         self.assertFalse(duplicate_mobile.is_valid())
@@ -377,6 +444,37 @@ class CaptiveTests(TestCase):
         self.assertNotEqual(self.client.cookies[COOKIE].value, "attacker-controlled")
         CaptiveSession.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
         self.assertEqual(self.client.get("/_captive/status/").status_code, 401)
+
+    def test_authorization_changes_revoke_pending_codes_and_sessions(self):
+        for change in ("disable", "delete", "remove", "clear", "all_fqdns"):
+            with self.subTest(change=change):
+                self.user = CaptivePortalUser.objects.create(name="Revocation", section="IT", rank="Officer",
+                    mobile_number="8765432109", email_address="revoke@example.com", all_fqdns=change == "all_fqdns")
+                if change != "all_fqdns":
+                    self.user.proxies.add(self.proxy)
+                CaptiveRateLimit.objects.all().delete()
+                self.authenticate("8765432109")
+                CaptiveRateLimit.objects.all().delete()
+                response, delivery = self.send("8765432109")
+                if change == "disable":
+                    self.user.is_enabled = False
+                    self.user.save()
+                elif change == "delete":
+                    self.user.delete()
+                elif change == "remove":
+                    self.user.proxies.remove(self.proxy)
+                elif change == "clear":
+                    self.user.proxies.clear()
+                else:
+                    self.user.all_fqdns = False
+                    self.user.save()
+                self.assertFalse(CaptiveSession.objects.filter(user=self.user, revoked=False).exists())
+                self.assertFalse(CaptiveOTP.objects.filter(user=self.user, consumed_at__isnull=True).exists())
+                rejected = self.client.post("/_captive/verify-otp/", {"challenge": response.context["challenge"],
+                    "otp": delivery.call_args.args[1], "identifier": "8765432109"})
+                self.assertEqual(rejected.status_code, 200)
+                self.assertEqual(self.client.get("/_captive/status/").status_code, 401)
+                self.user.delete()
 
 
 class SMSProviderTests(TestCase):
