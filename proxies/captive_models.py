@@ -110,6 +110,7 @@ class CaptiveOTP(models.Model):
     consumed_at = models.DateTimeField(null=True)
     delivered = models.BooleanField(default=False)
     request_ip = models.GenericIPAddressField(null=True)
+    client_fingerprint = models.CharField(max_length=64, blank=True, default="")
 
 
 class CaptiveSession(models.Model):
@@ -122,6 +123,7 @@ class CaptiveSession(models.Model):
     last_used_at = models.DateTimeField(default=timezone.now)
     client_ip = models.GenericIPAddressField(null=True)
     user_agent = models.CharField(max_length=512, blank=True)
+    client_fingerprint = models.CharField(max_length=64, blank=True, default="")
 
 
 class CaptiveRateLimit(models.Model):

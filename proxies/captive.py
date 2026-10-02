@@ -80,8 +80,9 @@ class CaptiveIngressMiddleware:
         if request.path.startswith("/_captive"):
             response["Cache-Control"] = "no-store, private"
             response["Referrer-Policy"] = "same-origin"
-            if settings.CSRF_COOKIE_NAME in response.cookies:
-                response.cookies[settings.CSRF_COOKIE_NAME]["secure"] = True
+            for name in (settings.CSRF_COOKIE_NAME, settings.SESSION_COOKIE_NAME):
+                if name in response.cookies:
+                    response.cookies[name]["secure"] = True
         return response
 
 
@@ -107,10 +108,19 @@ def limit(key, maximum, seconds):
 @sensitive_variables()
 def current_session(request):
     token = request.COOKIES.get(COOKIE, "")
-    if len(token) > 128:
+    if len(token) != 43:
         return None
     session = CaptiveSession.objects.select_related("user").filter(
         token_hash=digest(token), proxy=request.captive_proxy, revoked=False, expires_at__gt=timezone.now()).first()
+    if session:
+        from .security import session_fingerprint
+        mismatch = (not constant_time_compare(session.client_fingerprint, session_fingerprint(request))
+                    or (settings.CAPTIVE_BIND_SESSION_IP and session.client_ip != request.captive_ip)
+                    or session.last_used_at <= timezone.now() - timedelta(seconds=settings.AUTH_SESSION_IDLE_SECONDS))
+        if mismatch:
+            CaptiveSession.objects.filter(pk=session.pk).update(revoked=True)
+            event(request, "session_binding_failed", session.user)
+            return None
     if session and session.user.authorized(request.captive_proxy):
         CaptiveSession.objects.filter(pk=session.pk).update(last_used_at=timezone.now())
         return session
@@ -165,6 +175,7 @@ def login(request):
 @sensitive_post_parameters()
 @sensitive_variables()
 def send_otp(request):
+    from .security import browser_fingerprint
     captcha_token = request.POST.get("captcha_token", "")
     captcha_key = CAPTIVE_CAPTCHA_PREFIX + captcha_token
     challenge = request.session.get(captcha_key, {}) if len(captcha_token) == 43 else {}
@@ -218,7 +229,8 @@ def send_otp(request):
                     channel="sms", challenge_hash=digest(challenge),
                     destination_fingerprint=digest(user.mobile_number, "destination"),
                     otp_hash=digest(challenge + ":" + otp, "otp"),
-                    expires_at=timezone.now() + timedelta(seconds=settings.CAPTIVE_OTP_EXPIRY_SECONDS), request_ip=request.captive_ip)
+                    expires_at=timezone.now() + timedelta(seconds=settings.CAPTIVE_OTP_EXPIRY_SECONDS), request_ip=request.captive_ip,
+                    client_fingerprint=browser_fingerprint(request))
             else:
                 record = None
         if record:
@@ -239,6 +251,7 @@ def send_otp(request):
 @sensitive_post_parameters()
 @sensitive_variables()
 def verify_otp(request):
+    from .security import browser_fingerprint, session_fingerprint
     challenge = request.POST.get("challenge", "")[:128]
     otp = request.POST.get("otp", "")[:20]
     identifier = request.POST.get("identifier", "").strip()
@@ -256,6 +269,7 @@ def verify_otp(request):
     except ValidationError:
         pass
     token = None
+    binding = browser_fingerprint(request)
     if not limit("verify-ip:" + request.captive_ip, settings.CAPTIVE_VERIFY_IP_LIMIT, 3600):
         event(request, "rate_limited")
     else:
@@ -266,7 +280,7 @@ def verify_otp(request):
             # Increment before reading: this is the SQLite write lock and an atomic
             # attempt reservation. Concurrent successful submissions cannot reuse OTPs.
             records = CaptiveOTP.objects.filter(challenge_hash=digest(challenge), proxy=request.captive_proxy,
-                delivered=True, consumed_at__isnull=True, expires_at__gt=timezone.now(),
+                client_fingerprint=binding, delivered=True, consumed_at__isnull=True, expires_at__gt=timezone.now(),
                 failed_attempts__lt=settings.CAPTIVE_MAX_ATTEMPTS)
             reserved = records.update(failed_attempts=F("failed_attempts") + 1)
             record = CaptiveOTP.objects.select_related("user").filter(challenge_hash=digest(challenge), proxy=request.captive_proxy).first()
@@ -286,7 +300,8 @@ def verify_otp(request):
                 token = secrets.token_urlsafe(32)
                 CaptiveSession.objects.create(user=record.user, proxy=request.captive_proxy, token_hash=digest(token),
                     expires_at=timezone.now() + timedelta(seconds=settings.CAPTIVE_SESSION_SECONDS),
-                    client_ip=request.captive_ip, user_agent=request.headers.get("User-Agent", "")[:512])
+                    client_ip=request.captive_ip, user_agent=request.headers.get("User-Agent", "")[:512],
+                    client_fingerprint=session_fingerprint(request))
                 CaptivePortalUser.objects.filter(pk=record.user_id).update(last_successful_login=timezone.now())
                 event(request, "otp_verification_succeeded", record.user, record.channel)
                 event(request, "session_created", record.user, record.channel)

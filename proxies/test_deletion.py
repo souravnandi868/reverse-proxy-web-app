@@ -1,3 +1,4 @@
+from django.conf import settings
 """Deletion integration tests use real temporary files, never a running Nginx."""
 import importlib.util
 import json
@@ -110,7 +111,7 @@ class ProxyDeletionTests(TransactionTestCase):
             self.assertEqual(csrf.post(self.url).status_code, 403)
             csrf.get(self.url)
             helper.return_value = OperationResult(False, "unavailable")
-            self.assertEqual(csrf.post(self.url, {"csrfmiddlewaretoken": csrf.cookies["csrftoken"].value}).status_code, 302)
+            self.assertEqual(csrf.post(self.url, {"csrfmiddlewaretoken": csrf.cookies[settings.CSRF_COOKIE_NAME].value}).status_code, 302)
             helper.assert_called_once()
         self.assert_retained()
 

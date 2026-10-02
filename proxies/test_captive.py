@@ -1,3 +1,4 @@
+from django.conf import settings
 from datetime import timedelta
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
@@ -333,8 +334,8 @@ class CaptiveTests(TestCase):
                         HTTP_X_CAPTIVE_KEY=route_key(self.proxy.domain_name), HTTP_X_CAPTIVE_IP="192.0.2.10")
         self.assertEqual(client.post("/_captive/send-otp/", {"identifier": "9999999999"}).status_code, 403)
         response = client.get("/_captive/login/")
-        token = response.cookies["csrftoken"].value
-        self.assertTrue(response.cookies["csrftoken"]["secure"])
+        token = response.cookies[settings.CSRF_COOKIE_NAME].value
+        self.assertTrue(response.cookies[settings.CSRF_COOKIE_NAME]["secure"])
         with patch("proxies.captive.deliver"):
             response = client.post("/_captive/send-otp/", {"identifier": "9999999999", "captcha": client.session[SESSION_KEY]["answer"], "captcha_token": response.context["captcha_token"], "csrfmiddlewaretoken": token}, HTTP_ORIGIN="https://app.example.com")
         self.assertEqual(response.status_code, 200)

@@ -17,12 +17,14 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "proxies.security.BrowserSecurityHeadersMiddleware",
     "proxies.captive.CaptiveIngressMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "proxies.security.AuthenticationSecurityMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -61,6 +63,8 @@ LOGOUT_REDIRECT_URL = "login"
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
+SESSION_COOKIE_NAME = "proxy_admin_session"
+CSRF_COOKIE_NAME = "proxy_admin_csrf"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
@@ -87,3 +91,21 @@ CAPTIVE_IP_SEND_LIMIT = int(os.environ.get("CAPTIVE_IP_SEND_LIMIT", "20"))
 CAPTIVE_USER_SEND_LIMIT = int(os.environ.get("CAPTIVE_USER_SEND_LIMIT", "10"))
 CAPTIVE_FQDN_SEND_LIMIT = int(os.environ.get("CAPTIVE_FQDN_SEND_LIMIT", "1000"))
 CAPTIVE_VERIFY_IP_LIMIT = int(os.environ.get("CAPTIVE_VERIFY_IP_LIMIT", "100"))
+
+# Layered authentication limits use shared, atomic database counters.
+AUTH_CAPTCHA_IP_LIMIT = int(os.environ.get("AUTH_CAPTCHA_IP_LIMIT", "60"))
+AUTH_CAPTCHA_SESSION_LIMIT = int(os.environ.get("AUTH_CAPTCHA_SESSION_LIMIT", "30"))
+AUTH_POST_IP_LIMIT = int(os.environ.get("AUTH_POST_IP_LIMIT", "30"))
+AUTH_POST_SESSION_LIMIT = int(os.environ.get("AUTH_POST_SESSION_LIMIT", "15"))
+AUTH_FINGERPRINT_LIMIT = int(os.environ.get("AUTH_FINGERPRINT_LIMIT", "120"))
+AUTH_USERNAME_LIMIT = int(os.environ.get("AUTH_USERNAME_LIMIT", "10"))
+AUTH_RATE_WINDOW_SECONDS = int(os.environ.get("AUTH_RATE_WINDOW_SECONDS", "300"))
+AUTH_SESSION_IDLE_SECONDS = int(os.environ.get("AUTH_SESSION_IDLE_SECONDS", "1800"))
+CAPTIVE_BIND_SESSION_IP = os.environ.get("CAPTIVE_BIND_SESSION_IP", "true").lower() == "true"
+SESSION_COOKIE_AGE = int(os.environ.get("DJANGO_SESSION_COOKIE_AGE", "28800"))
+DATA_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 200
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "31536000" if SECURE_SSL_REDIRECT else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
