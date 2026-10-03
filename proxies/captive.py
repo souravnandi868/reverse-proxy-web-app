@@ -26,6 +26,12 @@ CAPTIVE_CAPTCHA_PREFIX = "captive_captcha:"
 GENERIC = "If the information is registered and authorized, an OTP has been sent to the registered mobile number."
 
 
+def access_denied(request, user=None, identifier=""):
+    event(request, "access_denied", user, "sms")
+    return page(request, identifier=identifier,
+                error=f"You are not authorized to access {request.captive_proxy.domain_name}. Please contact your administrator.")
+
+
 def digest(value, purpose="token"):
     return salted_hmac("captive." + purpose, value, algorithm="sha256").hexdigest()
 
@@ -205,7 +211,7 @@ def send_otp(request):
     fingerprint = digest(destination, "destination")
     challenge = secrets.token_urlsafe(32)
     event(request, "otp_requested", user, "sms")
-    # Evaluate every bucket, including for unknown destinations, with identical UI.
+    # Evaluate every bucket, including for unknown destinations.
     limits = [("ip:" + request.captive_ip, settings.CAPTIVE_IP_SEND_LIMIT, 3600),
               ("destination:" + fingerprint, settings.CAPTIVE_DESTINATION_SEND_LIMIT, 3600),
               ("cooldown:" + fingerprint, 1, settings.CAPTIVE_RESEND_SECONDS),
@@ -215,6 +221,8 @@ def send_otp(request):
     allowed = all([limit(*bucket) for bucket in limits])
     if not allowed:
         event(request, "rate_limited", user, "sms")
+    if not valid or not user or not user.authorized(request.captive_proxy):
+        return access_denied(request, user, identifier)
     if valid and allowed and user and user.authorized(request.captive_proxy):
         otp = f"{secrets.randbelow(1000000):06d}"
         with transaction.atomic():
@@ -233,6 +241,8 @@ def send_otp(request):
                     client_fingerprint=browser_fingerprint(request))
             else:
                 record = None
+        if record is None:
+            return access_denied(request, user, identifier)
         if record:
             try:
                 deliver(user.mobile_number, otp, request.captive_proxy.domain_name)

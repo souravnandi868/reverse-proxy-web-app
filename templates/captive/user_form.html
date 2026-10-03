@@ -1,1 +1,18 @@
-{% extends 'base.html' %}{% block heading %}{{ title }}{% endblock %}{% block content %}<form method="post" class="form-shell">{% csrf_token %}{{ form.non_field_errors }}<div class="form-grid">{% for field in form %}<label class="field"><span>{{ field.label }}</span>{{ field }}{{ field.errors }}</label>{% endfor %}</div><div class="form-actions"><a class="button" href="{% url 'captive_users' %}">Cancel</a><button class="button primary" type="submit">Save user</button></div></form>{% endblock %}
+{% extends 'base.html' %}{% load static %}
+{% block heading %}{{ title }}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/captive-user-form.css' %}">{% endblock %}
+{% block content %}
+<form method="post" class="form-shell">{% csrf_token %}{{ form.non_field_errors }}
+<p class="muted">Name, section, and mobile number are required. Other details are optional.</p>
+<div class="form-grid">
+{% for field in form %}
+{% if field.name == 'proxies' %}
+<fieldset class="field wide-field fqdn-options"><legend>{{ field.label }}</legend>{{ field }}{% if not field.field.queryset.exists %}<p>No captive-enabled FQDNs available.</p>{% endif %}{% if field.help_text %}<p class="muted">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</fieldset>
+{% else %}
+<label class="field" for="{{ field.id_for_label }}"><span>{{ field.label }}{% if field.field.required %} (required){% endif %}</span>{{ field }}{{ field.errors }}</label>
+{% endif %}
+{% endfor %}
+</div>
+<div class="form-actions"><a class="button" href="{% url 'captive_users' %}">Cancel</a><button class="button primary" type="submit">Save user</button></div>
+</form>
+{% endblock %}

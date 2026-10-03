@@ -23,9 +23,9 @@ def normalize_mobile(value):
 class CaptivePortalUser(models.Model):
     name = models.CharField(max_length=150)
     section = models.CharField(max_length=120)
-    rank = models.CharField(max_length=120)
+    rank = models.CharField(max_length=120, blank=True)
     mobile_number = models.CharField(max_length=13, null=True, unique=True)
-    email_address = models.EmailField(max_length=254, null=True)
+    email_address = models.EmailField(max_length=254, null=True, blank=True)
     is_enabled = models.BooleanField(default=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     all_fqdns = models.BooleanField("Allow access to all captive-enabled FQDNs", default=False)
@@ -42,24 +42,25 @@ class CaptivePortalUser(models.Model):
                        ("assign_captiveportaluser", "Assign authorized user FQDN access")]
         constraints = [models.UniqueConstraint(Lower("email_address"), name="captive_unique_email"),
                        models.CheckConstraint(condition=(models.Q(deleted_at__isnull=False) | models.Q(is_enabled=False)
-                           | models.Q(mobile_number__isnull=False, email_address__isnull=False)), name="captive_contact_required")]
+                           | (models.Q(mobile_number__isnull=False) & ~models.Q(mobile_number=""))), name="captive_contact_required")]
 
     def __str__(self):
         return self.name
 
     def clean(self):
         if not self.deleted_at:
-            for field in ("name", "section", "rank"):
+            for field in ("name", "section"):
                 value = (getattr(self, field) or "").strip()
                 if not value:
                     raise ValidationError({field: "This field is required."})
                 setattr(self, field, value)
+        self.rank = (self.rank or "").strip()
         self.mobile_number = normalize_mobile(self.mobile_number) if self.mobile_number else None
         self.email_address = (self.email_address or "").strip().lower() or None
         if self.email_address:
             validate_email(self.email_address)
-        if not self.deleted_at and not (self.mobile_number and self.email_address):
-            raise ValidationError("Both a mobile number and email address are required.")
+        if not self.deleted_at and not self.mobile_number:
+            raise ValidationError({"mobile_number": "A mobile number is required."})
 
     def save(self, *args, **kwargs):
         self.clean()

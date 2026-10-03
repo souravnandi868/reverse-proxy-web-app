@@ -5,6 +5,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.cache import never_cache
@@ -34,13 +35,17 @@ class AuthorizedUserForm(forms.ModelForm):
 
     def __init__(self, *args, actor=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["proxies"].widget = forms.CheckboxSelectMultiple()
         self.fields["proxies"].queryset = ProxyConfig.objects.filter(captive_portal_enabled=True)
         self.fields["proxies"].label = "Selected FQDNs"
+        self.fields["proxies"].help_text = "Check FQDNs to add access; uncheck them to remove access. Selected FQDNs apply when access to all captive-enabled FQDNs is off."
         if actor is not None:
             for field, perm in [("is_enabled", "toggle"), ("all_fqdns", "assign"), ("proxies", "assign")]:
                 self.fields[field].disabled = not actor.has_perm(f"proxies.{perm}_captiveportaluser")
             if not self.instance.pk and self.fields["is_enabled"].disabled:
                 self.initial["is_enabled"] = False
+            if self.fields["proxies"].disabled:
+                self.fields["proxies"].help_text = "FQDN assignment permission is required to change access."
 
 
 def audit(actor, action, user):
@@ -50,6 +55,7 @@ def audit(actor, action, user):
 def save_user(form, actor):
     user = form.save(commit=False)
     old = CaptivePortalUser.objects.filter(pk=user.pk).first()
+    old_proxies = set(old.proxies.values_list("pk", flat=True)) if old else set()
     user.updated_by = actor
     if not old:
         user.created_by = actor
@@ -63,7 +69,22 @@ def save_user(form, actor):
         if old.all_fqdns != user.all_fqdns:
             audit(actor, "all_fqdns_changed", user)
     form.save_m2m()
+    if old and old_proxies != set(user.proxies.values_list("pk", flat=True)):
+        audit(actor, "fqdn_access_changed", user)
     return user
+
+
+@permission("view_captiveportaluser")
+@require_http_methods(["GET"])
+def users_export_excel(request):
+    from .authorized_users_excel import build_authorized_users_excel
+
+    rows = CaptivePortalUser.objects.filter(deleted_at__isnull=True).select_related(
+        "created_by", "updated_by").prefetch_related("proxies")
+    response = HttpResponse(build_authorized_users_excel(rows),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = 'attachment; filename="authorized-users.xlsx"'
+    return response
 
 
 @permission("view_captiveportaluser")
@@ -137,8 +158,7 @@ def user_action(request, pk, action):
     return inner(request)
 
 
-@permission("view_captiveaudit")
-def audit_page(request):
+def filtered_audit_rows(request):
     rows = CaptiveAudit.objects.select_related("user", "proxy", "actor")
     for field in ("action", "channel"):
         if request.GET.get(field):
@@ -146,14 +166,49 @@ def audit_page(request):
     for field, lookup in [("administrator", "actor__username__icontains"), ("user", "user__name__icontains"), ("fqdn", "proxy__domain_name__icontains")]:
         if request.GET.get(field):
             rows = rows.filter(**{lookup: request.GET[field]})
+    dates = {}
     for field, lookup in [("start", "created_at__gte"), ("end", "created_at__lte")]:
+        value = request.GET.get(field, "")
+        if not value:
+            continue
         try:
-            date = parse_datetime(request.GET.get(field, ""))
+            date = parse_datetime(value)
         except ValueError:
             date = None
-        if date:
-            from django.utils.timezone import is_naive, make_aware
-            rows = rows.filter(**{lookup: make_aware(date) if is_naive(date) else date})
+        if date is None:
+            raise ValueError(f"Enter a valid {field} date and time.")
+        from django.utils.timezone import is_naive, make_aware
+        dates[field] = make_aware(date) if is_naive(date) else date
+        rows = rows.filter(**{lookup: dates[field]})
+    if "start" in dates and "end" in dates and dates["start"] > dates["end"]:
+        raise ValueError("Start date and time must be before or equal to end date and time.")
+    return rows
+
+
+@permission("view_captiveaudit")
+def audit_page(request):
+    from django.utils.timezone import get_current_timezone_name
+    error = ""
+    try:
+        rows = filtered_audit_rows(request)
+    except ValueError as exc:
+        error = str(exc)
+        rows = CaptiveAudit.objects.none()
     params = request.GET.copy()
     params.pop("page", None)
-    return render(request, "captive/audit.html", {"page": Paginator(rows, 50).get_page(request.GET.get("page")), "filters": params.urlencode()})
+    return render(request, "captive/audit.html", {"page": Paginator(rows, 50).get_page(request.GET.get("page")),
+        "filters": params.urlencode(), "error": error, "audit_timezone": get_current_timezone_name()}, status=400 if error else 200)
+
+
+@permission("view_captiveaudit")
+@require_http_methods(["GET"])
+def audit_export_excel(request):
+    from .captive_excel import build_captive_audit_excel
+    try:
+        rows = filtered_audit_rows(request)
+    except ValueError as exc:
+        return HttpResponse(str(exc), status=400, content_type="text/plain")
+    response = HttpResponse(build_captive_audit_excel(rows.iterator(chunk_size=2000)),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = 'attachment; filename="captive-audit.xlsx"'
+    return response

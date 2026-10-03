@@ -212,31 +212,55 @@ class CaptiveTests(TestCase):
         self.assertEqual(self.client.post("/_captive/verify-otp/", data).status_code, 200)
         self.assertEqual(CaptiveSession.objects.count(), 1)
 
-    def test_generic_response_for_disabled_unknown_deleted_unassigned(self):
-        known, _ = self.send()
-        self.user.is_enabled = False
-        self.user.save()
-        disabled, delivery = self.send()
+    def assert_access_denied(self, response, delivery):
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "You are not authorized to access app.example.com.")
+        self.assertNotContains(response, '<form method="post" action="/_captive/verify-otp/"')
+        self.assertContains(response, 'action="/_captive/send-otp/"')
+        self.assertFalse(response.context.get("challenge"))
+        self.assertEqual(response.context["next"], "/reports?a=1&b=two%20words")
         self.assertFalse(delivery.called)
-        unknown, delivery = self.send("8765432109")
-        self.assertFalse(delivery.called)
-        for response in (known, disabled, unknown):
-            self.assertEqual(response.context["message"], GENERIC)
-        self.user.is_enabled = True
-        self.user.save()
+        self.assertFalse(CaptiveOTP.objects.filter(consumed_at__isnull=True).exists())
+        self.assertFalse(CaptiveSession.objects.exists())
+        self.assertTrue(CaptiveAudit.objects.filter(action="access_denied", proxy=self.proxy).exists())
+
+    def test_denial_for_disabled_unknown_deleted_and_unassigned_contacts(self):
+        for case in ("unassigned", "disabled", "unknown", "deleted"):
+            with self.subTest(case=case):
+                CaptiveRateLimit.objects.all().delete()
+                if case == "unassigned":
+                    self.user.proxies.set([self.other])
+                elif case == "disabled":
+                    self.user.proxies.add(self.proxy)
+                    self.user.is_enabled = False
+                    self.user.save()
+                elif case == "deleted":
+                    self.user.delete()
+                for identifier in ("9999999999", "test@example.com"):
+                    if case == "unknown":
+                        identifier = "8765432109" if "@" not in identifier else "unknown@example.com"
+                    response, delivery = self.send(identifier)
+                    self.assert_access_denied(response, delivery)
+
+    def test_all_fqdns_can_continue_to_verification(self):
         self.user.proxies.clear()
-        CaptiveRateLimit.objects.all().delete()
-        _, delivery = self.send()
-        self.assertFalse(delivery.called)
         self.user.all_fqdns = True
         self.user.save()
-        CaptiveRateLimit.objects.all().delete()
-        _, delivery = self.send()
+        response, delivery = self.send("test@example.com")
         self.assertTrue(delivery.called)
-        self.user.delete()
-        CaptiveRateLimit.objects.all().delete()
-        _, delivery = self.send()
-        self.assertFalse(delivery.called)
+        self.assertEqual(response.context["message"], GENERIC)
+        self.assertContains(response, 'action="/_captive/verify-otp/"')
+
+    def test_assignment_removed_during_issuance_shows_denial(self):
+        original_refresh = CaptivePortalUser.refresh_from_db
+
+        def revoke_before_refresh(user, *args, **kwargs):
+            user.proxies.clear()
+            original_refresh(user, *args, **kwargs)
+
+        with patch.object(CaptivePortalUser, "refresh_from_db", revoke_before_refresh):
+            response, delivery = self.send()
+        self.assert_access_denied(response, delivery)
 
     def test_rate_limits_resend_and_new_code_invalidation(self):
         self.send()
@@ -346,7 +370,8 @@ class CaptiveTests(TestCase):
         self.assertEqual(local_next("/a?x=1&y=a%20b"), "/a?x=1&y=a%20b")
 
     def test_registration_validation(self):
-        for contacts in ({"mobile_number": "8765432109", "email_address": "new@example.com"},):
+        for contacts in ({"mobile_number": "8765432109", "email_address": "new@example.com"},
+                         {"mobile_number": "8765432109"}):
             form = AuthorizedUserForm({"name": "Name", "rank": "Rank", "section": "IT", **contacts})
             self.assertTrue(form.is_valid(), form.errors)
         for contacts in ({}, {"mobile_number": "9999999999"}, {"email_address": "new@example.com"},
@@ -360,6 +385,44 @@ class CaptiveTests(TestCase):
             "mobile_number": "8765432109", "email_address": "TEST@EXAMPLE.COM"})
         self.assertFalse(duplicate_mobile.is_valid())
         self.assertFalse(duplicate_email.is_valid())
+
+    def test_only_name_section_and_mobile_are_required(self):
+        data = {"name": "Mobile only", "section": "IT", "mobile_number": "8765432109"}
+        form = AuthorizedUserForm(data)
+        self.assertTrue(form.is_valid(), form.errors)
+        user = form.save()
+        self.assertEqual(user.rank, "")
+        self.assertIsNone(user.email_address)
+        user.full_clean()
+        second = AuthorizedUserForm({**data, "mobile_number": "9876543210"})
+        self.assertTrue(second.is_valid(), second.errors)
+        second.save()
+        for field in ("name", "section", "mobile_number"):
+            missing = {**data, "mobile_number": "9123456789", field: ""}
+            invalid = AuthorizedUserForm(missing)
+            self.assertFalse(invalid.is_valid())
+            self.assertIn(field, invalid.errors)
+        self.user.rank = ""
+        self.user.email_address = None
+        self.user.save()
+        response, delivery = self.send()
+        self.assertTrue(delivery.called)
+        self.assertTrue(response.context["challenge"])
+        CaptiveRateLimit.objects.all().delete()
+        self.assertEqual(self.authenticate().status_code, 302)
+
+    def test_create_and_edit_with_optional_details_empty(self):
+        console = Client()
+        console.force_login(self.admin)
+        data = {"name": "New user", "section": "IT", "mobile_number": "8765432109", "is_enabled": "on"}
+        self.assertEqual(console.post(reverse("captive_user_add"), data).status_code, 302)
+        user = CaptivePortalUser.objects.get(mobile_number="+918765432109")
+        self.assertEqual(user.rank, "")
+        self.assertIsNone(user.email_address)
+        data["section"] = "Operations"
+        self.assertEqual(console.post(reverse("captive_user_edit", args=[user.pk]), data).status_code, 302)
+        user.refresh_from_db()
+        self.assertEqual(user.section, "Operations")
 
     def test_admin_permissions_pages_and_confirmation(self):
         operator = get_user_model().objects.create_user("limited", is_staff=True)
@@ -383,6 +446,26 @@ class CaptiveTests(TestCase):
         self.assertIsNotNone(self.user.deleted_at)
         self.assertIsNone(self.user.mobile_number)
         self.assertTrue(CaptiveAudit.objects.filter(action="user_deleted", actor=self.admin).exists())
+
+    def test_edit_user_can_add_and_remove_fqdns(self):
+        console = Client()
+        console.force_login(self.admin)
+        url = reverse("captive_user_edit", args=[self.user.pk])
+        response = console.get(url)
+        self.assertContains(response, 'type="checkbox" name="proxies"')
+        self.assertTrue(response.context["form"]["proxies"].value())
+        data = {"name": self.user.name, "rank": self.user.rank, "section": self.user.section,
+                "mobile_number": self.user.mobile_number, "email_address": self.user.email_address,
+                "is_enabled": "on", "proxies": [self.proxy.pk, self.other.pk]}
+        self.assertEqual(console.post(url, data).status_code, 302)
+        self.assertEqual(set(self.user.proxies.values_list("pk", flat=True)), {self.proxy.pk, self.other.pk})
+        data["proxies"] = [self.other.pk]
+        self.assertEqual(console.post(url, data).status_code, 302)
+        self.assertEqual(list(self.user.proxies.all()), [self.other])
+        data["proxies"] = []
+        self.assertEqual(console.post(url, data).status_code, 302)
+        self.assertFalse(self.user.proxies.exists())
+        self.assertTrue(CaptiveAudit.objects.filter(user=self.user, action="fqdn_access_changed").exists())
 
     def test_change_permission_cannot_escalate_assignments_or_enable(self):
         operator = get_user_model().objects.create_user("editor", is_staff=True)

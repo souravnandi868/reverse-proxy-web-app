@@ -1,0 +1,6 @@
+.fqdn-options{min-width:0;border:1px solid var(--line);border-radius:8px;padding:16px}
+.fqdn-options legend{padding:0 6px}
+.fqdn-options>div{display:grid;gap:10px;max-height:320px;overflow:auto}
+.fqdn-options label{display:flex;align-items:center;gap:10px;overflow-wrap:anywhere;font-weight:400}
+.fqdn-options input[type=checkbox]{flex-shrink:0;width:17px;height:17px;padding:0}
+.fqdn-options p{margin:6px 0 0;font-weight:400;line-height:1.5}

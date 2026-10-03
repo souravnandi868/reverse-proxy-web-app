@@ -30,7 +30,17 @@ class CaptiveMigrationTests(TransactionTestCase):
             self.assertEqual(migrated.backend_private_ip, "10.0.0.10")
             self.assertEqual(apps.get_model("proxies", "CaptiveSession").objects.count(), 0)
             self.assertFalse(apps.get_model("proxies", "CaptivePortalUser").objects.get(pk=legacy_user.pk).is_enabled)
+            latest = [("proxies", "0016_captive_optional_user_details")]
+            executor = MigrationExecutor(connection)
+            executor.migrate(latest)
+            latest_apps = executor.loader.project_state(latest).apps
+            user_model = latest_apps.get_model("proxies", "CaptivePortalUser")
+            self.assertFalse(user_model.objects.get(pk=legacy_user.pk).is_enabled)
+            mobile_only = user_model.objects.create(name="Mobile only", section="IT",
+                mobile_number="+918765432109", rank="", email_address=None, is_enabled=True)
+            self.assertIsNone(mobile_only.email_address)
+            mobile_only.delete()
             MigrationExecutor(connection).migrate(before)
             self.assertEqual(apps.get_model("proxies", "ProxyConfig").objects.values_list("domain_name", flat=True).get(), "existing.example.com")
         finally:
-            MigrationExecutor(connection).migrate(after)
+            MigrationExecutor(connection).migrate([("proxies", "0016_captive_optional_user_details")])

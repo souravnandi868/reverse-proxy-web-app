@@ -5,10 +5,12 @@ from . import captive_admin
 
 urlpatterns = [
     path("authorized-users/", captive_admin.users, name="captive_users"),
+    path("authorized-users/export.xlsx", captive_admin.users_export_excel, name="captive_users_export_excel"),
     path("authorized-users/new/", captive_admin.user_edit, name="captive_user_add"),
     path("authorized-users/<int:pk>/edit/", captive_admin.user_edit, name="captive_user_edit"),
     path("authorized-users/<int:pk>/<str:action>/", captive_admin.user_action, name="captive_user_action"),
     path("captive-audit/", captive_admin.audit_page, name="captive_audit"),
+    path("captive-audit/export.xlsx", captive_admin.audit_export_excel, name="captive_audit_export_excel"),
     path("usage/", usage.page, name="website_usage"),
     path("usage/metrics/", usage.metrics, name="website_usage_metrics"),
     path("account/", account.information, name="account_information"),

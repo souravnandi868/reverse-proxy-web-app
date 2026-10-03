@@ -245,8 +245,8 @@ required Secure cookie needs HTTPS.
 ## Authorized users and permissions
 
 Use **Authorized Users** in the console (also linked from Django admin) to register,
-search, edit, enable/disable, assign FQDNs or confirm deletion. Name, section and rank
-are required. Both mobile number and email address are mandatory. Indian mobile
+search, edit, enable/disable, assign FQDNs or confirm deletion. Only name, section
+and mobile number are required. Rank and email address are optional. Indian mobile
 numbers are normalized to `+91` plus ten digits; email addresses are normalized
 to lowercase. Both are unique. Users may identify with either registered value,
 but OTP delivery always goes to the registered mobile by SMS. Explicit **all
@@ -351,8 +351,10 @@ generated with Python `secrets`; comparison is constant-time, attempts are reser
 atomically, and successful verification consumes the challenge. New codes consume
 previous unused codes for that user/FQDN/channel. Independent database counters
 enforce the configurable send and verification limits across Gunicorn workers.
-Public send responses are generic for unknown, disabled, deleted and unassigned
-contacts. Only the selected registered channel receives delivery.
+After a valid CAPTCHA, unknown, disabled, deleted and unassigned contacts see
+an access-denied message naming the requested FQDN, without an OTP verification
+form or delivery. Authorized contacts continue to verification. Denials are
+recorded in Captive Audit, and send rate limits still apply to every request.
 
 Sessions use a new random identifier after verification, store only its keyed hash,
 and bind to the user and proxy. Every check revalidates current authorization and
